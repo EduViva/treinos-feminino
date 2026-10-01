@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CATALOG, LEGACY_IDS } from '../../supabase/catalog/index.mjs';
 import { validateCatalog } from '../../supabase/catalog/validate.mjs';
-import { seedSql } from '../../supabase/catalog/build.mjs';
+import { seedSql, legacyMapJs } from '../../supabase/catalog/build.mjs';
 import { referenceSql } from '../../scripts/build-seed.mjs';
-import { SEED_EXERCISES } from '../../js/data/seed.js';
+import { SEED_EXERCISES } from '../fixtures/legacy-library.mjs';
 import { ARTS } from '../../js/figure/arts.js';
 import '../../js/figure/arts2.js';
 import '../../js/figure/arts3.js';
@@ -64,6 +64,7 @@ test('os exercícios da biblioteca original estão no catálogo, com os MESMOS d
 test('o seed do catálogo e os dados de referência versionados estão em dia (rode: node scripts/build-seed.mjs)', async () => {
   assert.equal(readFileSync('supabase/seed.sql', 'utf8'), await seedSql());
   assert.equal(readFileSync('supabase/migrations/20261001215400_reference_data.sql', 'utf8'), referenceSql());
+  assert.equal(readFileSync('js/data/legacy-map.js', 'utf8'), legacyMapJs());
 });
 
 test('taxonomia: conversões rótulo ↔ id, inclusive rótulos antigos', () => {

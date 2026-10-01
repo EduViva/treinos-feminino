@@ -11,13 +11,14 @@ import { sparkline } from '../charts.js';
 import { hasDraft, resumeSession, discardDraft } from './session.js';
 import { activitySheet } from './activities.js';
 import { sessionDetail } from './calendar.js';
+import { syncPill } from './common.js';
 
 export function homeView() {
   const st = store.state;
   const root = h('div');
   const name = store.firstName();
   root.appendChild(h('header', { class: 'page-head' }, h('div', { class: 'ph-text' },
-    h('h1', null, name ? `Olá, ${name}` : 'Olá'), h('p', { class: 'muted' }, fmtDateLong(Date.now())))));
+    h('h1', null, name ? `Olá, ${name}` : 'Olá'), h('p', { class: 'muted' }, fmtDateLong(Date.now()))), h('div', { class: 'ph-right' }, syncPill())));
 
   // treino em andamento (assíncrono)
   const draftHost = h('div');

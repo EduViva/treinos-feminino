@@ -4,7 +4,7 @@
 //    (assim o `updated_at` não muda à toa e os aparelhos não rebaixam o catálogo inteiro).
 //  * Exercícios removidos do catálogo são DESATIVADOS (is_active = false), nunca apagados:
 //    treinos e históricos que os usam continuam válidos.
-import { CATALOG } from './index.mjs';
+import { CATALOG, LEGACY_IDS } from './index.mjs';
 import { catalogId } from '../../js/sync/uuid.js';
 
 const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
@@ -60,4 +60,16 @@ where origin = 'catalog' and is_active
 `);
   out.push('commit;');
   return out.join('\n') + '\n';
+}
+
+// Mapa "id da biblioteca original (ex-…)" → slug do catálogo. O app o usa para migrar dados antigos
+// (treinos, históricos e backups) para os ids do catálogo no banco.
+export function legacyMapJs() {
+  const rows = Object.entries(LEGACY_IDS).map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)},`);
+  return `// GERADO por scripts/build-seed.mjs a partir de supabase/catalog — não edite à mão.
+// id da biblioteca original do app (antes do catálogo no Supabase) → slug do exercício no catálogo.
+export const LEGACY_EXERCISE_SLUGS = {
+${rows.join('\n')}
+};
+`;
 }

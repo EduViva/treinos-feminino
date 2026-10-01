@@ -47,12 +47,10 @@ export function referenceSql() {
 
 async function main() {
 const TARGETS = [[join(ROOT, 'supabase/migrations/20261001215400_reference_data.sql'), referenceSql]];
-
-// O catálogo é opcional neste script até existir (importação dinâmica).
-const catalogEntry = join(ROOT, 'supabase/catalog/index.mjs');
-if (existsSync(catalogEntry)) {
-  const { seedSql } = await import('../supabase/catalog/build.mjs');
+{
+  const { seedSql, legacyMapJs } = await import('../supabase/catalog/build.mjs');
   TARGETS.push([join(ROOT, 'supabase/seed.sql'), seedSql]);
+  TARGETS.push([join(ROOT, 'js/data/legacy-map.js'), legacyMapJs]);
 }
 
 let stale = 0;

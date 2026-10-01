@@ -9,6 +9,11 @@
     "stamp": "node scripts/stamp-sw.mjs",
     "icons": "node scripts/make-icons.mjs",
     "test": "node --test tests/unit/*.test.mjs",
-    "e2e": "node tests/e2e/run.mjs && node tests/e2e/run2.mjs"
+    "e2e": "node tests/e2e/run.mjs && node tests/e2e/run2.mjs",
+    "vendor": "node scripts/vendor.mjs"
+  },
+  "devDependencies": {
+    "@supabase/supabase-js": "2.117.2",
+    "esbuild": "0.28.2"
   }
 }

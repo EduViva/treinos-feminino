@@ -6,7 +6,8 @@ import {
   btn, icon, iconBtn, pageHead, chips, field, textInput, textArea, stepper, openSheet, confirmDialog, menuSheet, toast, empty,
 } from '../ui.js';
 import { exThumb } from '../visual.js';
-import { GROUPS } from '../data/seed.js';
+import { createFinder, exerciseMeta } from './finder.js';
+import * as tx from '../data/taxonomy.js';
 import { parseWorkoutText, matchExercise } from '../importer.js';
 import { libraryTabs, loadText, setsRepsText, restText } from './common.js';
 
@@ -70,32 +71,34 @@ async function delWorkout(w) {
 }
 
 // ================= Seletor de exercícios =================
+// "Adicionar exercício": busca, filtros (grupo, equipamento, tipo, nível), favoritos e recentes.
+// Resolve com os ids escolhidos, ou ['__new__'] (com .query = texto buscado) para criar um exercício novo.
 export function pickExercises({ multi = true, title = 'Escolher exercício', exclude = [] } = {}) {
   return new Promise((resolve) => {
-    let q = '', group = 'Todos'; const sel = new Set(); let done = false;
-    const list = h('div');
-    const search = h('div', { class: 'search' }, h('span', { class: 'ico', html: icon('search', 20) }),
-      h('input', { type: 'text', placeholder: 'Buscar…', 'aria-label': 'Buscar exercício', onInput: (e) => { q = e.target.value; draw(); } }));
-    const present = [...new Set(store.listExercises().map((e) => e.group))];
-    const bar = chips({ options: ['Todos', ...GROUPS.filter((g) => present.includes(g))], value: 'Todos', cls: 'scroll', onChange: (v) => { group = v; draw(); } });
+    const sel = new Set(); let done = false, finder = null;
     const footBtn = btn('Adicionar', { onClick: () => finish([...sel]) });
-    const s = openSheet({
-      title, body: [search, bar, list], footer: multi ? [footBtn] : null, className: 'tall',
-      onClose: () => { if (!done) resolve([]); },
-    });
+    const updateFoot = () => { footBtn.querySelector('span:last-child').textContent = sel.size ? `Adicionar (${sel.size})` : 'Adicionar'; footBtn.disabled = !sel.size; };
+    const s = openSheet({ title, body: [], footer: multi ? [footBtn] : null, className: 'tall', onClose: () => { if (!done) resolve([]); } });
     function finish(ids) { done = true; s.close(); resolve(ids); }
-    function draw() {
-      clear(list);
-      const items = store.listExercises().filter((e) => (group === 'Todos' || e.group === group) && (!q || norm(e.name).includes(norm(q))));
-      list.appendChild(h('div', { class: 'list' }, items.map((e) => h('button', {
-        type: 'button', class: 'li', onClick: () => { if (!multi) return finish([e.id]); sel.has(e.id) ? sel.delete(e.id) : sel.add(e.id); draw(); },
-      }, exThumb(e), h('div', { class: 'grow' }, h('div', { class: 't' }, e.name), h('div', { class: 's' }, `${e.group} · ${e.equipment}`)),
-      multi ? h('span', { class: 'end' }, sel.has(e.id) ? h('span', { class: 'badge ok', html: icon('check', 14) + ' ' }, '') : null) : null))));
-      if (multi) footBtn.querySelector('span:last-child').textContent = sel.size ? `Adicionar (${sel.size})` : 'Adicionar';
-      footBtn.disabled = multi && !sel.size;
-      list.appendChild(h('div', { style: { margin: '12px 0' } }, btn('Criar novo exercício', { kind: 'ghost', ic: 'plus', block: true, onClick: () => { done = true; s.close(); resolve(['__new__']); } })));
-    }
-    draw();
+    const create = (q) => { const r = ['__new__']; r.query = q; finish(r); };
+    finder = createFinder({
+      key: 'pick', sections: true, grouped: true, rememberQuery: false, onCreate: create,
+      getList: () => store.listExercises().filter((e) => !exclude.includes(e.id)),
+      renderRow: (e, { star }) => {
+        const row = h('div', { class: `li ${sel.has(e.id) ? 'sel' : ''}`, role: 'button', tabindex: '0', 'aria-pressed': multi ? String(sel.has(e.id)) : null });
+        const act = () => {
+          if (!multi) return finish([e.id]);
+          sel.has(e.id) ? sel.delete(e.id) : sel.add(e.id);
+          row.classList.toggle('sel', sel.has(e.id)); row.setAttribute('aria-pressed', String(sel.has(e.id))); updateFoot();
+        };
+        row.addEventListener('click', act);
+        row.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); act(); } });
+        row.append(exThumb(e), h('div', { class: 'grow' }, h('div', { class: 't' }, e.name), exerciseMeta(e)), star(), multi ? h('span', { class: 'pick', html: icon('check', 14) }) : null);
+        return row;
+      },
+    });
+    s.body.appendChild(finder.node);
+    if (multi) updateFoot();
   });
 }
 
@@ -137,7 +140,7 @@ export function workoutEditorView([id]) {
   async function moveItem(i, d) { [w.items[i], w.items[i + d]] = [w.items[i + d], w.items[i]]; await persist(); draw(); }
   async function addExercises() {
     const ids = await pickExercises({ multi: true, title: 'Adicionar exercícios' });
-    if (ids[0] === '__new__') { await persist(); return app.navigate(`/exercicio/novo?w=${w.id}`); }
+    if (ids[0] === '__new__') { await persist(); return app.navigate(`/exercicio/novo?w=${w.id}${ids.query ? `&nome=${encodeURIComponent(ids.query)}` : ''}`); }
     for (const id2 of ids) w.items.push(store.newWorkoutItem(id2));
     if (ids.length) { await persist(); draw(); }
   }
@@ -211,7 +214,7 @@ async function doImport(plan) {
       let exId = it.match?.id;
       if (!exId) {
         const e = store.blankExercise();
-        e.name = it.name.replace(/\b\w/g, (c) => c.toUpperCase()); e.group = 'Outro'; e.equipment = 'Outro'; e.repUnit = it.secUnit ? 'seg' : 'reps';
+        e.name = it.name.replace(/\b\w/g, (c) => c.toUpperCase()); e.group = tx.groups.name('outros'); e.equipment = tx.equipment.name('outro'); e.repUnit = it.secUnit ? 'seg' : 'reps';
         e.defaults = { sets: it.sets || 3, reps: it.reps || 12, load: it.load || 0, rest: it.rest || store.state.settings.defaultRest, loadStep: 2 };
         await store.saveExercise(e); exId = e.id;
       }

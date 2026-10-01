@@ -5,6 +5,7 @@ import { segmented } from '../ui.js';
 import { app } from '../app.js';
 import { exerciseEntries } from '../stats.js';
 import { effortLabel } from '../data/seed.js';
+import * as sync from '../sync/engine.js';
 
 export function loadText(ex, load) {
   if (!load) return ex && ex.bodyweight ? 'Peso corporal' : 'A definir';
@@ -70,3 +71,20 @@ export function groupMuscles(ex) {
 
 export const totalVolume = (sets) => sum(sets, (s) => (s.load || 0) * (s.reps || 0));
 export { fmtDur };
+
+// Indicador discreto de sincronização (nuvem). Toque → Perfil. Atualiza sozinho.
+export function syncLabel(s) {
+  if (s.state === 'signedout') return 'Entre de novo';
+  if (s.state === 'syncing') return 'Sincronizando…';
+  if (s.state === 'offline') return s.pending ? `Offline · ${s.pending} a enviar` : 'Offline';
+  if (s.state === 'error' && s.failed) return `${s.failed} sem sincronizar`;
+  if (s.pending) return `${s.pending} a enviar`;
+  return 'Sincronizado';
+}
+export function syncPill() {
+  const el = h('button', { type: 'button', class: 'sync-pill', onClick: () => app.navigate('/perfil'), 'aria-live': 'polite' });
+  const draw = (s) => { el.className = `sync-pill ${s.state}`; el.innerHTML = ''; el.append(h('i'), syncLabel(s)); el.title = s.lastError || ''; };
+  draw(sync.status);
+  el._destroy = sync.onStatus(draw);
+  return el;
+}

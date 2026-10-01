@@ -1,0 +1,17 @@
+import { makeEnv, reporter } from './harness.mjs';
+const env = await makeEnv({ port: 8141 });
+const R = reporter();
+const { fake } = env;
+const { user, session } = fake.createUser({ email: 'ana@teste.com', password: 'senha-forte-1', name: 'Ana' });
+const d = await env.device({ session });
+await d.goto();
+await d.page.waitForSelector('.hero, .next-card, .splash', { timeout: 15000 });
+await d.page.waitForTimeout(2500);
+console.log('URL', d.page.url());
+console.log('titulo:', await d.page.locator('h1').first().innerText().catch(() => '?'));
+const info = await d.page.evaluate(async () => { const s = await import('/js/store.js'); return { ex: s.state.exercises.size, profile: !!s.state.profile, meta: s.state.meta, user: s.state.userId }; });
+console.log(info);
+console.log('chamadas:', fake.log.length, fake.log.slice(0, 8).map((l) => `${l.method} ${l.path}`));
+await d.page.screenshot({ path: 'tests/e2e/out/smoke-cloud.png' });
+console.log(R.done(env.errors) ? 'OK' : 'ERROS');
+await env.close();

@@ -5,6 +5,11 @@ import { app } from '../app.js';
 import {
   btn, icon, pageHead, field, textInput, selectInput, numInput, readNum, openSheet, confirmDialog, toast, stepper, chips, alertDialog, details,
 } from '../ui.js';
+import * as auth from '../auth.js';
+import * as sync from '../sync/engine.js';
+import * as db from '../db.js';
+import { legacySummary } from '../legacy.js';
+import { syncLabel } from './common.js';
 
 export const APP_VERSION = '1.0.0';
 const OBJETIVOS = ['Hipertrofia (ganhar massa)', 'Emagrecimento', 'Condicionamento físico', 'Saúde e bem-estar', 'Força', 'Reabilitação / retorno', 'Outro'];
@@ -43,16 +48,19 @@ export function onboardingView() {
       h('p', { class: 'muted' }, 'Seu diário inteligente de treino: registre o que realmente aconteceu, entenda padrões e decida a sua evolução.')),
     h('div', { class: 'card', style: { marginTop: '14px' } },
       h('div', { class: 'row', style: { alignItems: 'flex-start' } }, h('span', { class: 'ico', style: { color: 'var(--ok)' }, html: icon('shield', 24) }),
-        h('p', null, h('b', null, 'Privado por padrão. '), 'Tudo fica salvo neste aparelho — não há conta, servidor nem rastreamento. Você exporta um backup quando quiser.'))),
+        h('p', null, h('b', null, 'Só seus. '), 'Seus treinos ficam na sua conta, protegidos por login (ninguém mais enxerga os seus dados), e também neste aparelho — então tudo continua funcionando sem internet.'))),
     h('div', { class: 'card', style: { marginTop: '12px' } }, h('div', { class: 'card-title' }, 'Seu perfil'), form.node,
       h('p', { class: 'muted', style: { fontSize: '13px' } }, 'Serve só de contexto. As sugestões de carga usam o seu histórico real, nunca peso, altura ou sexo isoladamente. Tudo pode ser alterado depois.')),
     h('div', { class: 'card', style: { marginTop: '12px' } },
-      h('label', { class: 'switch' }, h('span', null, 'Incluir treinos de exemplo', h('small', null, 'Treino A, B e C editáveis (cargas em branco). Você pode apagar ou trocar tudo.')), examples)),
+      h('label', { class: 'switch' }, h('span', null, 'Incluir treinos de exemplo', h('small', null, 'Segunda a sexta, com alongamento e mobilidade (cargas em branco). Você pode apagar ou trocar tudo.')), examples)),
     h('div', { style: { marginTop: '18px' } }, btn('Começar', { size: 'lg', block: true, onClick: async () => {
       const p = form.read();
       if (!p.name) { toast('Diga seu nome para começar.'); form.name.focus(); return; }
       await store.saveProfile(p);
-      if (examples.checked && !store.state.workouts.length) await store.loadSeedWorkouts();
+      if (examples.checked && !store.state.workouts.length) {
+        const n = await store.loadSeedWorkouts();
+        if (!n) toast('Não consegui carregar os treinos de exemplo agora. Você pode adicioná-los depois em Treinos.');
+      }
       app.applyTheme();
       toast(`Bem-vinda, ${store.firstName()}!`);
       app.navigate('/');
@@ -66,8 +74,10 @@ export function profileView() {
   const root = h('div');
   root.appendChild(pageHead('Perfil', { sub: 'Você, preferências e dados' }));
 
+  root.appendChild(accountCard());
+
   const form = profileForm(st.profile || {});
-  root.appendChild(h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'Seus dados'), form.node,
+  root.appendChild(h('div', { class: 'card', style: { marginTop: '12px' } }, h('div', { class: 'card-title' }, 'Seus dados'), form.node,
     btn('Salvar perfil', { onClick: async () => { const p = form.read(); if (!p.name) return toast('O nome não pode ficar vazio.'); await store.saveProfile(p); toast('Perfil salvo.'); } }),
     h('p', { class: 'muted', style: { fontSize: '13px', marginTop: '10px' } }, 'Esses dados servem de contexto. As sugestões de carga priorizam o seu histórico real de desempenho.')));
 
@@ -124,13 +134,16 @@ export function profileView() {
 
   // privacidade
   root.appendChild(h('div', { class: 'section' }, h('h2', null, 'Privacidade'), h('div', { class: 'card' },
-    h('p', null, h('b', null, 'Onde ficam os dados? '), 'No armazenamento deste navegador/aparelho (IndexedDB): perfil, treinos, histórico, peso, ciclo, humor, fadiga, observações, fotos e vídeos.'),
-    h('p', { style: { marginTop: '8px' } }, h('b', null, 'O que sai do aparelho? '), 'Nada. O app não usa contas, servidores, análises nem anúncios; não há serviços externos (nem fontes ou bibliotecas da internet).'),
-    h('p', { style: { marginTop: '8px' } }, h('b', null, 'Atenção: '), 'se você limpar os dados do navegador ou desinstalar o app, o histórico some. Por isso existe o backup.'))));
+    h('p', null, h('b', null, 'Onde ficam os dados? '), 'Na sua conta (nuvem, com login e proteção para que só você acesse) e em uma cópia neste aparelho, que permite usar o app sem internet.'),
+    h('p', { style: { marginTop: '8px' } }, h('b', null, 'O que é enviado? '), 'Perfil, treinos, histórico, atividades, bem-estar, peso, observações e as suas fotos/vídeos de exercícios. Nada é compartilhado com outras pessoas, anúncios ou análises.'),
+    h('p', { style: { marginTop: '8px' } }, h('b', null, 'Seu controle: '), 'você pode exportar um arquivo de backup, apagar todos os dados da conta ou excluir a conta a qualquer momento (na “Zona de risco”).'))));
 
   // perigo
   root.appendChild(h('div', { class: 'section' }, h('h2', null, 'Zona de risco'), h('div', { class: 'card' },
-    btn('Apagar todos os dados', { kind: 'danger', ic: 'trash', block: true, onClick: eraseAll }))));
+    h('p', { class: 'muted', style: { fontSize: '13px', marginBottom: '12px' } }, 'Estas ações valem para a sua conta (nuvem) e para este aparelho. Exige internet.'),
+    btn('Apagar todos os meus dados', { kind: 'danger', ic: 'trash', block: true, onClick: eraseAll }),
+    h('div', { style: { height: '10px' } }),
+    btn('Excluir minha conta', { kind: 'danger', ic: 'trash', block: true, onClick: deleteAccount }))));
 
   root.appendChild(h('p', { class: 'muted', style: { textAlign: 'center', fontSize: '12.5px', margin: '22px 0 0' } }, `Meus Treinos v${APP_VERSION} · Ferramenta de acompanhamento pessoal. As sugestões não substituem orientação de profissional de educação física ou saúde.`));
   return root;
@@ -223,10 +236,52 @@ async function restoreSheet() {
   draw(snaps);
 }
 
+// ---- conta ----
+function accountCard() {
+  const ident = auth.cachedIdentity();
+  const email = ident?.email || '';
+  const status = h('p', { class: 'muted', style: { fontSize: '13.5px', marginTop: '2px' } });
+  const syncBtn = btn('Sincronizar agora', { kind: 'secondary', size: 'sm', ic: 'refresh', onClick: async () => { await sync.syncNow(); const s = sync.status; toast(s.state === 'offline' ? 'Sem internet: as alterações serão enviadas quando voltar.' : s.state === 'error' ? 'Algumas alterações não foram enviadas. Tentaremos de novo.' : 'Tudo sincronizado.'); } });
+  const draw = (s) => {
+    const when = s.lastSyncAt ? ` · última vez às ${fmtTime(s.lastSyncAt)}` : '';
+    status.textContent = syncLabel(s) + (s.state === 'idle' ? when : '');
+    syncBtn.disabled = s.state === 'syncing';
+  };
+  draw(sync.status);
+  const card = h('div', { class: 'card' },
+    h('div', { class: 'row' }, h('div', { class: 'avatar', 'aria-hidden': 'true' }, (email || store.firstName() || '?').charAt(0).toUpperCase()),
+      h('div', { class: 'grow' }, h('b', null, email || 'Conta conectada'), status)),
+    h('div', { class: 'row wrap', style: { marginTop: '12px' } }, syncBtn,
+      btn('Sair', { kind: 'ghost', size: 'sm', ic: 'logout', onClick: () => app.signOut() })));
+  card._destroy = sync.onStatus(draw);
+  // dados antigos (versão sem conta) ainda neste aparelho?
+  legacySummary().then((l) => {
+    if (!l) return;
+    const c = l.counts;
+    card.appendChild(h('div', { class: 'banner info', style: { marginTop: '12px' } }, h('span', { class: 'ico', html: icon('upload', 22) }),
+      h('div', { class: 'grow' }, h('b', null, 'Dados antigos neste aparelho'),
+        h('p', { class: 'muted' }, `${c.treinos} treinos, ${c.sessoes} sessões, ${c.atividades} atividades, ${c.bemestar} registros de bem-estar. Importe para não perder nada.`),
+        h('div', { style: { marginTop: '10px' } }, btn('Importar para minha conta', { size: 'sm', onClick: () => app.importLegacy() })))));
+  }).catch(() => {});
+  return card;
+}
+
 async function eraseAll() {
-  if (!(await confirmDialog({ title: 'Apagar tudo?', message: 'Isso remove perfil, treinos, histórico, atividades, bem-estar, fotos e vídeos deste aparelho. Considere exportar um backup antes.', confirmText: 'Continuar', danger: true }))) return;
+  if (!(await confirmDialog({ title: 'Apagar tudo?', message: 'Isso remove perfil, treinos, histórico, atividades, bem-estar, fotos e vídeos da sua conta (nuvem) e deste aparelho. Considere exportar um backup antes.', confirmText: 'Continuar', danger: true }))) return;
   if (!(await confirmDialog({ title: 'Tem certeza?', message: 'Não há como desfazer.', confirmText: 'Apagar tudo', danger: true }))) return;
+  if (navigator.onLine === false) return alertDialog('Sem internet', 'Para apagar também os dados da nuvem é preciso estar online. Conecte-se e tente de novo.');
+  try { await sync.eraseRemoteData(); } catch (e) { return alertDialog('Não foi possível apagar na nuvem', `${e.message}\n\nNada foi apagado deste aparelho.`); }
   await store.eraseEverything();
+  await sync.syncNow(); // recarrega o catálogo de exercícios
   toast('Dados apagados.');
   app.navigate('/boas-vindas');
+}
+
+async function deleteAccount() {
+  if (!(await confirmDialog({ title: 'Excluir sua conta?', message: 'A conta e TODOS os seus dados (nuvem e este aparelho) serão excluídos para sempre. Exporte um backup antes se quiser guardar algo.', confirmText: 'Continuar', danger: true }))) return;
+  if (!(await confirmDialog({ title: 'Última confirmação', message: 'Excluir a conta definitivamente?', confirmText: 'Excluir minha conta', danger: true }))) return;
+  if (navigator.onLine === false) return alertDialog('Sem internet', 'Para excluir a conta é preciso estar online.');
+  try { await sync.deleteRemoteAccount(); } catch (e) { return alertDialog('Não foi possível excluir a conta', e.message); }
+  await app.signOut({ purge: true, silent: true });
+  toast('Conta excluída.');
 }

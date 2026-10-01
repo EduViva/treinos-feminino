@@ -56,22 +56,23 @@ export function parseLine(line) {
 
 function tokens(s) { return norm(s).split(/[^a-z0-9]+/).filter((t) => t.length > 1 && !['de', 'da', 'do', 'na', 'no', 'com', 'em'].includes(t)); }
 
-// Encontra o exercício da biblioteca mais parecido (ou null → será criado).
+// Encontra o exercício da biblioteca mais parecido (ou null → será criado). Considera os nomes alternativos.
 export function matchExercise(name, library) {
   const n = norm(name);
   if (!n) return null;
+  const scoreOf = (label) => {
+    const en = norm(label);
+    if (en === n) return 100;
+    if (en.includes(n) || n.includes(en)) return 80 - Math.abs(en.length - n.length) * 0.2;
+    const a = tokens(n), b = tokens(en);
+    const common = a.filter((t) => b.some((u) => u === t || u.startsWith(t) || t.startsWith(u))).length;
+    const ratio = common / Math.max(a.length, b.length || 1);
+    return common && ratio >= 0.5 ? 40 + ratio * 30 : 0;
+  };
   let best = null, bestScore = 0;
   for (const ex of library) {
-    const en = norm(ex.name);
-    let score = 0;
-    if (en === n) score = 100;
-    else if (en.includes(n) || n.includes(en)) score = 80 - Math.abs(en.length - n.length) * 0.2;
-    else {
-      const a = tokens(n), b = tokens(en);
-      const common = a.filter((t) => b.some((u) => u === t || u.startsWith(t) || t.startsWith(u))).length;
-      const ratio = common / Math.max(a.length, b.length || 1);
-      if (common && ratio >= 0.5) score = 40 + ratio * 30;
-    }
+    let score = scoreOf(ex.name);
+    for (const alias of ex.aliases || []) score = Math.max(score, scoreOf(alias) - 1); // nome oficial vence empate
     if (score > bestScore) { bestScore = score; best = ex; }
   }
   return bestScore >= 50 ? best : null;

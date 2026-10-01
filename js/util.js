@@ -1,4 +1,5 @@
 // Utilitários gerais: DOM, datas, formatação.
+import { uuidv4 } from './sync/uuid.js';
 
 export function h(tag, props, ...children) {
   const el = document.createElement(tag);
@@ -39,10 +40,8 @@ export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 export const clear = (el) => { while (el.firstChild) el.removeChild(el.firstChild); return el; };
 
-export function uid() {
-  if (globalThis.crypto && crypto.randomUUID) return crypto.randomUUID();
-  return 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
-}
+// Sempre um UUID v4 válido: os mesmos ids são usados no banco (Supabase) e funcionam offline.
+export const uid = uuidv4;
 
 // Exercícios medidos em tempo: 'seg' (alongamento/prancha) e 'min' (esteira/escada)
 export const isTimed = (u) => u === 'seg' || u === 'min';

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseWorkoutText, parseLine, matchExercise } from '../../js/importer.js';
-import { SEED_EXERCISES } from '../../js/data/seed.js';
+import { SEED_EXERCISES } from '../fixtures/legacy-library.mjs';
 
 const lib = SEED_EXERCISES;
 

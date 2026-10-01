@@ -1,10 +1,16 @@
-// Estado do app + persistência. Memória espelha o IndexedDB (carregado no início).
+// Estado do app + persistência. A memória espelha o IndexedDB (cache local, offline-first); toda alteração
+// é gravada localmente NA HORA e enviada ao Supabase em segundo plano (js/sync/engine.js).
 import * as db from './db.js';
+import * as sync from './sync/engine.js';
 import { uid, dateKey, startOfDay } from './util.js';
-import { SEED_EXERCISES, SEED_WORKOUTS, MEDIA_LIMITS } from './data/seed.js';
+import { SEED_WORKOUTS, MEDIA_LIMITS } from './data/seed.js';
+import { LEGACY_EXERCISE_SLUGS } from './data/legacy-map.js';
+import { applyPrefs, splitExercise, mediaPath } from './sync/mappers.js';
+import { catalogId } from './sync/uuid.js';
+import { convertLegacyData, persistConverted } from './legacy.js';
+import * as tx from './data/taxonomy.js';
 
-export const SCHEMA_VERSION = 1;
-const SEED_VERSION = 2;
+export const SCHEMA_VERSION = 2;
 
 export const DEFAULT_SETTINGS = {
   sound: true, vibration: true, wakeLock: true,
@@ -13,16 +19,18 @@ export const DEFAULT_SETTINGS = {
 
 export const state = {
   ready: false,
+  userId: null,
   profile: null,
   settings: { ...DEFAULT_SETTINGS },
-  exercises: new Map(),
+  exercises: new Map(),   // catálogo + próprios, JÁ com as preferências pessoais aplicadas
+  prefs: new Map(),       // exerciseId → preferências (cru)
   workouts: [],
-  sessions: [],       // ordem crescente por startedAt
+  sessions: [],           // ordem crescente por startedAt
   activities: [],
   wellbeing: new Map(),
   weights: [],
   suggestions: [],
-  media: new Map(),   // exerciseId -> [meta]
+  media: new Map(),       // exerciseId -> [meta]
   persisted: null,
   meta: {},
 };
@@ -32,32 +40,13 @@ export function onChange(fn) { listeners.add(fn); return () => listeners.delete(
 function emit(what) { for (const f of listeners) { try { f(what); } catch (e) { console.error(e); } } }
 
 const now = () => Date.now();
+const queue = (entity, id, opts) => sync.queue(entity, id, opts).catch((e) => console.warn('[sync] fila', e));
+
+export function setUser(userId) { state.userId = userId; }
 
 export async function init() {
   await db.open();
-  state.profile = await db.kvGet('profile', null);
-  state.settings = { ...DEFAULT_SETTINGS, ...(await db.kvGet('settings', {})) };
-  state.meta = await db.kvGet('meta', {});
-  await maybeSeedLibrary();
-  const [ex, wk, se, ac, wb, wt, su, me] = await Promise.all([
-    db.getAll('exercises'), db.getAll('workouts'), db.getAll('sessions'), db.getAll('activities'),
-    db.getAll('wellbeing'), db.getAll('weights'), db.getAll('suggestions'), db.getAll('media'),
-  ]);
-  state.exercises = new Map(ex.map((e) => [e.id, e]));
-  state.workouts = wk.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  state.sessions = se.sort((a, b) => a.startedAt - b.startedAt);
-  state.activities = ac.sort((a, b) => a.startedAt - b.startedAt);
-  state.wellbeing = new Map(wb.map((w) => [w.date, w]));
-  state.weights = wt.sort((a, b) => a.date.localeCompare(b.date));
-  state.suggestions = su.sort((a, b) => a.createdAt - b.createdAt);
-  state.media = new Map();
-  for (const m of me) {
-    if (!state.media.has(m.exerciseId)) state.media.set(m.exerciseId, []);
-    state.media.get(m.exerciseId).push(stripBlob(m));
-  }
-  for (const list of state.media.values()) list.sort((a, b) => a.createdAt - b.createdAt);
-  await migrate();
-  await migrateArt();
+  await loadState();
   state.ready = true;
   try {
     if (navigator.storage && navigator.storage.persist) {
@@ -69,45 +58,32 @@ export async function init() {
 
 const stripBlob = (m) => { const { blob, ...rest } = m; return rest; };
 
-// Adiciona à biblioteca exercícios novos de versões futuras, sem nunca sobrescrever os existentes.
-async function maybeSeedLibrary() {
-  if ((state.meta.seedVersion || 0) >= SEED_VERSION) return;
-  const existing = new Set((await db.getAll('exercises')).map((e) => e.id));
-  const t = now();
-  const fresh = SEED_EXERCISES.filter((e) => !existing.has(e.id)).map((e) => ({ ...clone(e), createdAt: t, updatedAt: t }));
-  if (fresh.length) await db.putMany('exercises', fresh);
-  state.meta = { ...state.meta, seedVersion: SEED_VERSION };
-  await db.kvSet('meta', state.meta);
-}
-
-// v2: biblioteca/treinos padrão da usuária. Remove os exercícios e treinos de exemplo da v1
-// (exercícios com histórico são arquivados, nunca apagados) e cria Segunda–Sexta se não houver treinos.
-async function migrate() {
-  if ((state.meta.libVersion || 0) >= 2) return;
-  const keep = new Set(SEED_EXERCISES.map((e) => e.id));
-  for (const e of [...state.exercises.values()]) if (e.builtin && !keep.has(e.id)) await removeExercise(e.id);
-  for (const w of [...state.workouts]) if (w.example) await deleteWorkout(w.id);
-  if (state.profile && !state.workouts.some((w) => !w.archived)) await loadSeedWorkouts();
-  await setMeta({ libVersion: 2 });
-}
-
-// v3: animações dedicadas (pegada, aparelho e posição fiéis ao exercício). Só troca a arte de exercícios
-// padrão que ainda usam a animação aproximada anterior; personalizações da usuária são preservadas.
-const ART_V3 = {
-  'ex-puxada-supinada': ['lat_pulldown', 'lat_pulldown_supine'], 'ex-serrote-maq': ['seated_row', 'one_arm_row'],
-  'ex-rosca-w': ['biceps_curl', 'ez_curl'], 'ex-desenv-maq': ['shoulder_press', 'shoulder_press_machine'],
-  'ex-afundo-step': ['lunge', 'step_lunge'], 'ex-afundo-smith': ['lunge', 'smith_lunge'],
-  'ex-supino-inclinado': ['chest_press', 'incline_press'], 'ex-mob-agach-profundo': ['squat', 'deep_squat'],
-  'ex-triceps-corda': ['triceps_pushdown', 'triceps_rope'],
-};
-async function migrateArt() {
-  if ((state.meta.libVersion || 0) >= 3) return;
-  for (const [id, [from, to]] of Object.entries(ART_V3)) {
-    const e = state.exercises.get(id);
-    if (e && e.art === from) { const n = { ...e, art: to, updatedAt: now() }; await db.put('exercises', n); state.exercises.set(id, n); }
+async function loadState() {
+  state.profile = await db.kvGet('profile', null);
+  state.settings = { ...DEFAULT_SETTINGS, ...(await db.kvGet('settings', {})) };
+  state.meta = await db.kvGet('meta', {});
+  const [ex, pr, wk, se, ac, wb, wt, su, me] = await Promise.all([
+    db.getAll('exercises'), db.getAll('prefs'), db.getAll('workouts'), db.getAll('sessions'), db.getAll('activities'),
+    db.getAll('wellbeing'), db.getAll('weights'), db.getAll('suggestions'), db.getAll('media'),
+  ]);
+  state.prefs = new Map(pr.map((p) => [p.exerciseId, p]));
+  state.exercises = new Map(ex.map((e) => [e.id, applyPrefs(e, state.prefs.get(e.id))]));
+  state.workouts = wk.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  state.sessions = se.sort((a, b) => a.startedAt - b.startedAt);
+  state.activities = ac.sort((a, b) => a.startedAt - b.startedAt);
+  state.wellbeing = new Map(wb.map((w) => [w.date, w]));
+  state.weights = wt.sort((a, b) => a.date.localeCompare(b.date));
+  state.suggestions = su.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  state.media = new Map();
+  for (const m of me) {
+    if (!state.media.has(m.exerciseId)) state.media.set(m.exerciseId, []);
+    state.media.get(m.exerciseId).push(stripBlob(m));
   }
-  await setMeta({ libVersion: 3 });
+  for (const list of state.media.values()) list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 }
+
+// Relê o IndexedDB (depois de uma sincronização que trouxe novidades).
+export async function reload() { await loadState(); emit('sync'); }
 
 export const clone = (o) => (o == null ? o : JSON.parse(JSON.stringify(o)));
 
@@ -121,6 +97,7 @@ export async function saveProfile(p) {
   const prev = state.profile;
   state.profile = { ...(prev || {}), ...p, updatedAt: now(), createdAt: prev?.createdAt || now() };
   await db.kvSet('profile', state.profile);
+  await queue('profile', 'me');
   if (p.weight && (!prev || prev.weight !== p.weight)) {
     await addWeight({ date: dateKey(), kg: p.weight, source: 'perfil' });
   }
@@ -131,49 +108,87 @@ export async function saveProfile(p) {
 export async function saveSettings(patch) {
   state.settings = { ...state.settings, ...patch };
   await db.kvSet('settings', state.settings);
+  if (state.profile) await queue('profile', 'me');
   emit('settings');
 }
 
 // ---------- Exercícios ----------
 export const getExercise = (id) => state.exercises.get(id);
+
+// Lista para telas/seletores: sem arquivados (pessoais) nem exercícios aposentados do catálogo.
 export function listExercises({ archived = false } = {}) {
   return [...state.exercises.values()]
-    .filter((e) => archived || !e.archived)
+    .filter((e) => archived || (!e.archived && !e.inactive))
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 }
+export const catalogSize = () => [...state.exercises.values()].filter((e) => e.builtin).length;
 
 export function blankExercise() {
   return {
-    id: uid(), name: '', group: 'Outro', secondary: [], equipment: 'Máquina', art: null,
+    id: uid(), name: '', group: tx.groups.name('outros'), secondary: [], equipment: tx.equipment.name('maquina'), art: null, aliases: [], tips: [], level: null,
     instructions: [], defaults: { sets: 3, reps: 12, load: 0, rest: state.settings.defaultRest, loadStep: 2 },
-    repUnit: 'reps', kind: 'forca', bodyweight: false, notes: '', mediaPrimary: null, builtin: false, archived: false,
+    repUnit: 'reps', kind: 'forca', bodyweight: false, notes: '', mediaPrimary: null, builtin: false, archived: false, favorite: false,
+    origin: 'custom', ownerId: state.userId, visibility: 'private', parentId: null,
   };
 }
 
+function putPrefs(prefs) {
+  state.prefs.set(prefs.exerciseId, prefs);
+  return db.put('prefs', prefs).then(() => queue('prefs', prefs.exerciseId));
+}
+
+// Exercício PRÓPRIO: salva o exercício (+ preferências). Exercício do CATÁLOGO: o catálogo nunca muda —
+// só as preferências pessoais (favorito, arquivado, observações, padrões de séries/carga) são gravadas.
 export async function saveExercise(e) {
   const prev = state.exercises.get(e.id);
-  const rec = { ...e, createdAt: prev?.createdAt || now(), updatedAt: now() };
-  state.exercises.set(rec.id, rec);
-  await db.put('exercises', rec);
+  const baseStored = prev ? await db.get('exercises', e.id) : null;
+  const { base, prefs } = splitExercise({ ...e, builtin: e.builtin ?? prev?.builtin }, baseStored, state.userId);
+  prefs.updatedAt = now();
+  let merged;
+  if (base) {
+    const rec = { ...base, createdAt: prev?.createdAt || now(), updatedAt: now() };
+    await db.put('exercises', rec);
+    await queue('exercise', rec.id);
+    merged = applyPrefs(rec, prefs);
+  } else {
+    merged = applyPrefs(baseStored || prev, prefs);
+  }
+  await putPrefs(prefs);
+  state.exercises.set(merged.id, merged);
   emit('exercises');
-  return rec;
+  return merged;
+}
+
+export async function toggleFavorite(id) {
+  const e = state.exercises.get(id);
+  if (!e) return false;
+  const cur = state.prefs.get(id) || { exerciseId: id, favorite: false, archived: false, notes: '', mediaPrimary: null, defaults: { sets: null, reps: null, load: null, rest: null, loadStep: null } };
+  const prefs = { ...cur, favorite: !e.favorite, updatedAt: now() };
+  await putPrefs(prefs);
+  state.exercises.set(id, { ...e, favorite: prefs.favorite });
+  emit('exercises');
+  return prefs.favorite;
 }
 
 export function exerciseHasHistory(id) {
   return state.sessions.some((s) => s.exercises.some((x) => x.exerciseId === id));
 }
 
-// Exercícios com histórico nunca são apagados (apenas arquivados): o histórico antigo permanece íntegro.
+// Exercícios do catálogo ou com histórico nunca são apagados (apenas arquivados para você): o histórico
+// antigo permanece íntegro. Exercício próprio SEM histórico é excluído de verdade.
 export async function removeExercise(id) {
   const e = state.exercises.get(id);
   if (!e) return 'none';
-  if (exerciseHasHistory(id)) {
+  if (e.builtin || exerciseHasHistory(id)) {
     await saveExercise({ ...e, archived: true });
     return 'archived';
   }
   state.exercises.delete(id);
+  state.prefs.delete(id);
   await db.del('exercises', id);
-  for (const m of [...(state.media.get(id) || [])]) await db.del('media', m.id);
+  await db.del('prefs', id);
+  await queue('exercise', id, { op: 'delete' });
+  for (const m of [...(state.media.get(id) || [])]) await deleteMedia(id, m.id);
   state.media.delete(id);
   emit('exercises');
   return 'deleted';
@@ -200,6 +215,7 @@ export async function saveWorkout(w) {
   if (i >= 0) state.workouts[i] = rec; else state.workouts.push(rec);
   state.workouts.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   await db.put('workouts', rec);
+  await queue('workout', rec.id);
   emit('workouts');
   return rec;
 }
@@ -212,6 +228,7 @@ export async function duplicateWorkout(id) {
   copy.name = `${w.name} (cópia)`;
   copy.order = state.workouts.length;
   copy.items = copy.items.map((it) => ({ ...it, id: uid() }));
+  delete copy.createdBy;
   return saveWorkout(copy);
 }
 
@@ -219,6 +236,7 @@ export async function duplicateWorkout(id) {
 export async function deleteWorkout(id) {
   state.workouts = state.workouts.filter((w) => w.id !== id);
   await db.del('workouts', id);
+  await queue('workout', id, { op: 'delete' });
   emit('workouts');
 }
 
@@ -229,14 +247,26 @@ export async function reorderWorkouts(ids) {
   }
 }
 
+// Treinos-modelo (Segunda–Sexta). Os exercícios vêm do catálogo; ids da biblioteca original são resolvidos pelo mapa.
 export async function loadSeedWorkouts() {
+  let made = 0;
   for (const t of SEED_WORKOUTS) {
     const w = blankWorkout();
     w.name = t.name; w.description = t.description; w.weekday = t.weekday || null;
-    w.items = t.items.filter((it) => state.exercises.has(it.exerciseId))
-      .map((it) => newWorkoutItem(it.exerciseId, Object.fromEntries(Object.entries(it).filter(([k]) => k !== 'exerciseId'))));
+    const items = [];
+    for (const it of t.items) {
+      const slug = LEGACY_EXERCISE_SLUGS[it.exerciseId];
+      const exId = slug ? await catalogId(slug) : it.exerciseId;
+      if (!state.exercises.has(exId)) continue;
+      const { exerciseId, ...over } = it;
+      items.push(newWorkoutItem(exId, over));
+    }
+    if (!items.length) continue;
+    w.items = items;
     await saveWorkout(w);
+    made++;
   }
+  return made;
 }
 
 // Próximo treino. Com treinos por dia da semana: o de hoje (se ainda não feito) ou o próximo dia.
@@ -268,17 +298,20 @@ export async function addSession(s) {
   state.sessions.push(s);
   state.sessions.sort((a, b) => a.startedAt - b.startedAt);
   await db.put('sessions', s);
+  await queue('session', s.id);
   emit('sessions');
 }
 export async function updateSession(s) {
   const i = state.sessions.findIndex((x) => x.id === s.id);
   if (i >= 0) state.sessions[i] = s; else state.sessions.push(s);
   await db.put('sessions', s);
+  await queue('session', s.id);
   emit('sessions');
 }
 export async function deleteSession(id) {
   state.sessions = state.sessions.filter((s) => s.id !== id);
   await db.del('sessions', id);
+  await queue('session', id, { op: 'delete' });
   emit('sessions');
 }
 
@@ -289,12 +322,14 @@ export async function saveActivity(a) {
   if (i >= 0) state.activities[i] = rec; else state.activities.push(rec);
   state.activities.sort((x, y) => x.startedAt - y.startedAt);
   await db.put('activities', rec);
+  await queue('activity', rec.id);
   emit('activities');
   return rec;
 }
 export async function deleteActivity(id) {
   state.activities = state.activities.filter((a) => a.id !== id);
   await db.del('activities', id);
+  await queue('activity', id, { op: 'delete' });
   emit('activities');
 }
 
@@ -304,12 +339,14 @@ export async function saveWellbeing(entry) {
   const rec = { ...(prev || {}), ...entry, updatedAt: now(), createdAt: prev?.createdAt || now() };
   state.wellbeing.set(rec.date, rec);
   await db.put('wellbeing', rec);
+  await queue('wellbeing', rec.date);
   emit('wellbeing');
   return rec;
 }
 export async function deleteWellbeing(date) {
   state.wellbeing.delete(date);
   await db.del('wellbeing', date);
+  await queue('wellbeing', date, { op: 'delete' });
   emit('wellbeing');
 }
 
@@ -320,12 +357,15 @@ export async function addWeight({ date, kg, source }) {
   const rec = { id: prev?.id || uid(), date, kg, source: source || 'manual', createdAt: prev?.createdAt || now() };
   state.weights = state.weights.filter((w) => w.id !== rec.id).concat(rec).sort((a, b) => a.date.localeCompare(b.date));
   await db.put('weights', rec);
+  await queue('weight', rec.id);
   emit('weights');
   return rec;
 }
 export async function deleteWeight(id) {
-  state.weights = state.weights.filter((w) => w.id !== id);
+  const w = state.weights.find((x) => x.id === id);
+  state.weights = state.weights.filter((x) => x.id !== id);
   await db.del('weights', id);
+  if (w) await queue('weight', id, { op: 'delete', meta: { date: w.date } });
   emit('weights');
 }
 
@@ -334,6 +374,7 @@ export async function saveSuggestion(rec) {
   const i = state.suggestions.findIndex((x) => x.id === rec.id);
   if (i >= 0) state.suggestions[i] = rec; else state.suggestions.push(rec);
   await db.put('suggestions', rec);
+  await queue('suggestion', rec.id);
   emit('suggestions');
   return rec;
 }
@@ -361,9 +402,10 @@ export async function addMedia(exerciseId, file, { replaceId } = {}) {
   const rec = {
     id: replaceId || uid(), exerciseId, kind: isVideo ? 'video' : 'image',
     mime: blob.type || file.type, name: file.name || (isVideo ? 'vídeo' : 'foto'), size: blob.size,
-    createdAt: now(), blob,
+    createdAt: now(), blob, remote: false,
   };
   await db.put('media', rec);
+  await queue('media', rec.id);
   const list = (state.media.get(exerciseId) || []).filter((m) => m.id !== rec.id);
   list.push(stripBlob(rec));
   list.sort((a, b) => a.createdAt - b.createdAt);
@@ -372,26 +414,39 @@ export async function addMedia(exerciseId, file, { replaceId } = {}) {
   return stripBlob(rec);
 }
 
+// Foto/vídeo: do aparelho; se só existir na nuvem (outro aparelho), baixa sob demanda e guarda em cache.
 export async function getMediaBlob(id) {
   const r = await db.get('media', id);
-  return r ? r.blob : null;
+  if (!r) return null;
+  if (r.blob) return r.blob;
+  if (r.path && sync.isStarted()) {
+    try {
+      const blob = await sync.downloadMedia(r.path, r.bucket || 'user-media');
+      if (blob) { await db.put('media', { ...r, blob }); return blob; }
+    } catch (e) { console.warn('[mídia]', e.message); }
+  }
+  return null;
 }
 
 export async function deleteMedia(exerciseId, id) {
+  const r = await db.get('media', id);
   await db.del('media', id);
+  await queue('media', id, { op: 'delete', meta: { path: r?.path || (r && state.userId ? mediaPath(state.userId, r) : null) } });
   state.media.set(exerciseId, (state.media.get(exerciseId) || []).filter((m) => m.id !== id));
   const e = state.exercises.get(exerciseId);
   if (e && e.mediaPrimary === id) await saveExercise({ ...e, mediaPrimary: null });
   emit('media');
 }
 
-// ---------- Rascunho do treino em andamento ----------
+// ---------- Rascunho do treino em andamento (somente neste aparelho) ----------
 export const getDraft = () => db.kvGet('activeSession', null);
 export const saveDraft = (d) => db.kvSet('activeSession', d);
 export const clearDraft = () => db.kvDel('activeSession');
 
 // ---------- Exportar / importar / backups ----------
-const DATA_STORES = ['exercises', 'workouts', 'sessions', 'activities', 'wellbeing', 'weights', 'suggestions'];
+const DATA_STORES = ['exercises', 'prefs', 'workouts', 'sessions', 'activities', 'wellbeing', 'weights', 'suggestions'];
+const ENTITY_OF = { exercises: 'exercise', prefs: 'prefs', workouts: 'workout', sessions: 'session', activities: 'activity', wellbeing: 'wellbeing', weights: 'weight', suggestions: 'suggestion' };
+const keyOfStore = (n, r) => (n === 'wellbeing' ? r.date : n === 'prefs' ? r.exerciseId : r.id);
 
 function blobToDataURL(blob) {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
@@ -407,7 +462,8 @@ export async function exportAll({ includeMedia = true } = {}) {
   if (includeMedia) {
     for (const m of await db.getAll('media')) {
       const { blob, ...meta } = m;
-      data.media.push({ ...meta, data: await blobToDataURL(blob) });
+      const b = blob || (await getMediaBlob(m.id));
+      if (b) data.media.push({ ...meta, data: await blobToDataURL(b) });
     }
   }
   return { app: 'treinos-feminino', schema: SCHEMA_VERSION, exportedAt: new Date().toISOString(), includesMedia: includeMedia, data };
@@ -415,7 +471,7 @@ export async function exportAll({ includeMedia = true } = {}) {
 
 export function summarize(data) {
   return {
-    treinos: data.workouts?.length || 0, exercicios: data.exercises?.length || 0, sessoes: data.sessions?.length || 0,
+    treinos: data.workouts?.length || 0, exercicios: data.exercises?.filter((e) => !e.builtin && e.origin !== 'catalog').length || 0, sessoes: data.sessions?.length || 0,
     atividades: data.activities?.length || 0, bemestar: data.wellbeing?.length || 0,
     pesos: data.weights?.length || 0, midias: data.media?.length || 0,
   };
@@ -427,37 +483,37 @@ export function validateBackup(obj) {
   return summarize(obj.data);
 }
 
+async function idsByEntity() {
+  const o = {};
+  for (const n of DATA_STORES) o[ENTITY_OF[n]] = new Set((await db.getAll(n)).filter((r) => !(n === 'exercises' && r.builtin)).map((r) => keyOfStore(n, r)));
+  return o;
+}
+// Depois de SUBSTITUIR dados locais: o que sumiu é excluído na nuvem; o que ficou é reenviado.
+async function reconcile(before) {
+  const after = await idsByEntity();
+  for (const [entity, ids] of Object.entries(before)) for (const id of ids) if (!after[entity].has(id)) await queue(entity, id, { op: 'delete', meta: entity === 'weight' ? { date: String(id).replace(/^w-/, '') } : undefined });
+  for (const [entity, ids] of Object.entries(after)) for (const id of ids) await queue(entity, id);
+}
+
 // mode: 'replace' (substitui tudo) | 'merge' (acrescenta o que não existe)
 export async function importAll(obj, mode = 'merge') {
   validateBackup(obj);
   await createSnapshot('Antes de importar', { auto: true });
   const d = obj.data;
-  if (mode === 'replace') {
-    for (const n of [...DATA_STORES, 'media']) await db.clearStore(n);
+  const before = mode === 'replace' ? await idsByEntity() : null;
+  const media = [];
+  for (const m of d.media || []) { const { data, ...meta } = m; media.push({ ...meta, ...(data ? { blob: await dataURLToBlob(data) } : {}) }); }
+  const cv = await convertLegacyData({ ...d, media, prefs: d.prefs || [] }, { userId: state.userId });
+  if (mode === 'replace') for (const n of [...DATA_STORES, 'media']) await db.clearStore(n);
+  await persistConverted(cv, { userId: state.userId, queue, mode });
+  if ((mode === 'replace' || !state.profile) && cv.profile) {
+    await db.kvSet('profile', cv.profile);
+    if (cv.settings) await db.kvSet('settings', { ...DEFAULT_SETTINGS, ...cv.settings });
+    await queue('profile', 'me');
   }
-  const keyOf = { exercises: 'id', workouts: 'id', sessions: 'id', activities: 'id', wellbeing: 'date', weights: 'id', suggestions: 'id', media: 'id' };
-  for (const n of DATA_STORES) {
-    const incoming = d[n] || [];
-    if (mode === 'merge') {
-      const have = new Set((await db.getAll(n)).map((r) => r[keyOf[n]]));
-      await db.putMany(n, incoming.filter((r) => !have.has(r[keyOf[n]])));
-    } else await db.putMany(n, incoming);
-  }
-  if (d.media?.length) {
-    const have = mode === 'merge' ? new Set((await db.getAll('media')).map((r) => r.id)) : new Set();
-    for (const m of d.media) {
-      if (have.has(m.id)) continue;
-      const { data, ...meta } = m;
-      await db.put('media', { ...meta, blob: await dataURLToBlob(data) });
-    }
-  }
-  if (mode === 'replace' || !state.profile) {
-    if (d.profile) await db.kvSet('profile', d.profile);
-    if (d.settings) await db.kvSet('settings', { ...DEFAULT_SETTINGS, ...d.settings });
-    if (d.meta) await db.kvSet('meta', { ...d.meta, seedVersion: Math.max(d.meta.seedVersion || 0, SEED_VERSION) });
-  }
+  if (before) await reconcile(before);
   await db.kvDel('activeSession');
-  await init();
+  await loadState();
   emit('import');
 }
 
@@ -478,13 +534,18 @@ export async function restoreSnapshot(id) {
   const rec = await db.get('backups', id);
   if (!rec) throw new Error('Backup não encontrado.');
   await createSnapshot('Antes de restaurar', { auto: true });
-  // Restaurar não toca nas mídias (snapshots internos não carregam mídia).
-  for (const n of DATA_STORES) await db.clearStore(n);
-  for (const n of DATA_STORES) await db.putMany(n, rec.data[n] || []);
+  const before = await idsByEntity();
+  // Restaurar não toca nas mídias (snapshots internos não carregam mídia) nem no catálogo.
+  for (const n of DATA_STORES) {
+    if (n === 'exercises') { for (const e of await db.getAll(n)) if (!e.builtin) await db.del(n, e.id); } else await db.clearStore(n);
+  }
+  for (const n of DATA_STORES) await db.putMany(n, (rec.data[n] || []).filter((r) => !(n === 'exercises' && (r.builtin || r.origin === 'catalog'))));
   if (rec.data.profile) await db.kvSet('profile', rec.data.profile);
   if (rec.data.settings) await db.kvSet('settings', rec.data.settings);
+  await reconcile(before);
+  if (rec.data.profile) await queue('profile', 'me');
   await db.kvDel('activeSession');
-  await init();
+  await loadState();
   emit('import');
 }
 export async function deleteSnapshot(id) { await db.del('backups', id); }
@@ -497,9 +558,10 @@ export async function autoSnapshotIfDue() {
   if (now() - last > 7 * 86400000) await createSnapshot('Automático semanal', { auto: true });
 }
 
+// Apaga os dados LOCAIS deste aparelho (a nuvem é apagada antes, por sync.eraseRemoteData, quando o usuário confirma).
 export async function eraseEverything() {
   await db.wipeAll();
-  await init();
+  await loadState();
   emit('import');
 }
 
