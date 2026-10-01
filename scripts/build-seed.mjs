@@ -45,6 +45,7 @@ export function referenceSql() {
   return out.join('\n');
 }
 
+async function main() {
 const TARGETS = [[join(ROOT, 'supabase/migrations/20261001215400_reference_data.sql'), referenceSql]];
 
 // O catálogo é opcional neste script até existir (importação dinâmica).
@@ -63,3 +64,6 @@ for (const [file, gen] of TARGETS) {
   }
 }
 if (stale) { console.error('Rode: node scripts/build-seed.mjs'); process.exit(1); }
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) await main();
