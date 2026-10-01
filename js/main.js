@@ -91,7 +91,7 @@ app.resumeSession = resumeSession;
 
 function applyTheme() {
   const t = store.state.settings.theme;
-  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; else if (!window.claude) delete document.documentElement.dataset.theme;
   const dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const m = document.querySelector('meta[name=theme-color]');
   if (m) m.content = dark ? '#0E0C18' : '#6D4BD8';
@@ -99,7 +99,7 @@ function applyTheme() {
 app.applyTheme = applyTheme;
 
 async function registerSW() {
-  if (!('serviceWorker' in navigator) || !/^https?:/.test(location.protocol)) return;
+  if (window.claude || !('serviceWorker' in navigator) || !/^https?:/.test(location.protocol)) return; // prévia (visualizador) não permite SW
   try {
     const reg = await navigator.serviceWorker.register('sw.js');
     reg.addEventListener('updatefound', () => {

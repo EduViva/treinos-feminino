@@ -1,6 +1,6 @@
 /* Service worker — Meus Treinos. Cache-first: o app abre e funciona sem internet.
    A lista abaixo é gerada por `npm run stamp` (scripts/stamp-sw.mjs). */
-const VERSION = '81abb77e39';
+const VERSION = '3f4c47fe6f';
 const CACHE = 'treinos-' + VERSION;
 const PRECACHE = [/*PRECACHE_START*/'./', './css/app.css', './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/icon.svg', './index.html', './js/app.js', './js/charts.js', './js/data/seed.js', './js/db.js', './js/figure/arts.js', './js/figure/kit.js', './js/figure/rig.js', './js/figure/scene.js', './js/importer.js', './js/main.js', './js/progression.js', './js/session.js', './js/stats.js', './js/store.js', './js/ui.js', './js/util.js', './js/views/activities.js', './js/views/calendar.js', './js/views/common.js', './js/views/evolution.js', './js/views/exercises.js', './js/views/home.js', './js/views/profile.js', './js/views/session.js', './js/views/suggestion.js', './js/views/wellbeing.js', './js/views/workouts.js', './js/visual.js', './manifest.webmanifest'/*PRECACHE_END*/];
 

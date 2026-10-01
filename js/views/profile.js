@@ -137,7 +137,12 @@ export function profileView() {
 }
 
 // ---- exportar ----
+const inPreview = () => typeof window !== 'undefined' && !!window.claude; // visualizador de artifacts
 async function saveFile(filename, blob) {
+  if (inPreview()) {
+    alertDialog('Download indisponível na prévia', 'Dentro do visualizador do Claude os downloads são bloqueados. Instale o app pelo endereço publicado (HTTPS) para exportar backups.');
+    return 'cancel';
+  }
   const file = new File([blob], filename, { type: 'application/json' });
   const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
   if (coarse && navigator.canShare && navigator.canShare({ files: [file] })) {

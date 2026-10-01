@@ -187,7 +187,7 @@ function setCells(sx, { editable = true } = {}) {
   const cell = (val, lab, changed, onClick) => h(editable ? 'button' : 'div', { type: 'button', class: `cell ${changed ? 'edited' : ''}`, onClick, 'aria-label': `${lab}: ${val}. Toque para ajustar` }, h('b', null, val), h('span', null, lab));
   const open = () => adjustSheet();
   return h('div', { class: 's-set' },
-    cell(sx.bodyweight && !t.load ? 'Corpo' : fmtNum(t.load, 1), sx.bodyweight && !t.load ? 'peso' : 'kg', t.load !== p.load, open),
+    cell(t.load ? fmtNum(t.load, 1) : sx.bodyweight ? 'Corpo' : '—', t.load ? 'kg' : sx.bodyweight ? 'peso' : 'definir carga', t.load !== p.load, open),
     cell(repUnitText(ex, t.reps), sx.repUnit === 'seg' ? 'segundos' : 'repetições', t.reps !== p.reps, open),
     cell(restText(t.rest), 'descanso', t.rest !== p.rest, open));
 }
@@ -269,7 +269,7 @@ function vRunning() {
     visual(sx),
     h('div', { class: 'timer-wrap' }, h('div', { class: 'timer-label', style: { color: 'var(--s-go)' } }, 'SÉRIE'), timer),
     h('div', { class: 's-set' },
-      h('div', { class: 'cell' }, h('b', null, sx.bodyweight && !sx.target.load ? 'Corpo' : fmtNum(sx.target.load, 1)), h('span', null, sx.bodyweight && !sx.target.load ? 'peso' : 'kg')),
+      h('div', { class: 'cell' }, h('b', null, sx.target.load ? fmtNum(sx.target.load, 1) : sx.bodyweight ? 'Corpo' : '—'), h('span', null, sx.target.load ? 'kg' : sx.bodyweight ? 'peso' : 'sem carga')),
       h('div', { class: 'cell' }, h('b', null, repUnitText(ex, sx.target.reps)), h('span', null, sx.repUnit === 'seg' ? 'segundos' : 'repetições')),
       h('div', { class: 'cell' }, h('b', null, `${n}/${sx.target.sets}`), h('span', null, 'série'))),
   ];
