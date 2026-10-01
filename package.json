@@ -1,0 +1,14 @@
+{
+  "name": "treinos-feminino",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Diário inteligente de treinos (PWA, offline-first, dados 100% locais)",
+  "type": "module",
+  "scripts": {
+    "serve": "node scripts/serve.mjs",
+    "stamp": "node scripts/stamp-sw.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "test": "node --test tests/unit/*.test.mjs",
+    "e2e": "node tests/e2e/run.mjs"
+  }
+}
