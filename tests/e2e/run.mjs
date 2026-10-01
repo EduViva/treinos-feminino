@@ -42,17 +42,23 @@ await page.locator('select').nth(2).selectOption('Intermediário');
 await tap('Começar');
 await page.waitForSelector('.next-card');
 ok((await text('h1')).includes('Olá, Ana'), 'saudação com o nome');
-ok((await text('.next-card h2')) === 'Treino A', 'próximo treino = Treino A');
+ok(['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'].includes(await text('.next-card h2')), 'próximo treino = treino da semana (Segunda–Sexta)');
 await shot('02-home');
 const prof = await sessEval(async () => (await import('/js/store.js')).state.profile);
 ok(prof.name === 'Ana Souza' && prof.age === 34 && prof.height === 165 && prof.weight === 62.5, 'perfil salvo (nome, idade, altura, peso)');
 const wk0 = await sessEval(async () => (await import('/js/store.js')).state.workouts.length);
-ok(wk0 === 3, '3 treinos de exemplo criados');
+ok(wk0 === 5, '5 treinos padrão criados (segunda a sexta)');
 
 // ================================================================= 2. HISTÓRICO (para a progressão)
 step('2. Prepara plano real + 3 sessões antigas de Leg press (20 kg, 3×12, esforço moderado)');
 await sessEval(async () => {
   const s = await import('/js/store.js');
+  // fixtures do teste: 3 treinos próprios (rotação A→B→C) montados com exercícios da biblioteca padrão
+  for (const w of [...s.state.workouts]) await s.deleteWorkout(w.id);
+  const mkw = async (name, ids) => { const w = s.blankWorkout(); w.name = name; w.items = ids.map((id) => s.newWorkoutItem(id, { sets: 3 })); await s.saveWorkout(w); };
+  await mkw('Treino A', ['ex-leg-press', 'ex-extensora', 'ex-flexora-deitada', 'ex-abdutora', 'ex-pelvica', 'ex-prancha']);
+  await mkw('Treino B', ['ex-supino-inclinado', 'ex-puxada-supinada', 'ex-rosca-w', 'ex-triceps-corda', 'ex-elev-lateral', 'ex-desenv-maq']);
+  await mkw('Treino C', ['ex-smith', 'ex-adutora', 'ex-sumo-step', 'ex-extensora']);
   const w = s.state.workouts[0];
   const items = w.items.map((it) => (it.exerciseId === 'ex-leg-press' ? { ...it, load: 20 } : it));
   await s.saveWorkout({ ...w, items });
@@ -198,7 +204,7 @@ ok(last.durationSec > 0 && last.totals.rest > 0, 'duração total e descanso tot
 // ================================================================= 4. TELAS DE ANÁLISE
 step('8. Exercício, evolução e calendário refletem o treino');
 await page.goto(BASE + '#/exercicios'); await page.waitForSelector('.list');
-await page.getByText('Leg press', { exact: true }).first().click();
+await page.locator('.li', { hasText: 'Leg press horizontal' }).first().click();
 await page.waitForSelector('.visual');
 await wait(900);
 await shot('12-exercicio');

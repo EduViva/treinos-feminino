@@ -43,16 +43,16 @@ const oldBefore = await ev(async () => JSON.stringify((await import('/js/store.j
 // ---------------------------------------------------------------- criar exercício
 step('1. Criar exercício novo com modelo de animação');
 await page.goto(BASE + '#/exercicio/novo'); await page.waitForSelector('input[aria-label="Nome"]');
-await page.getByLabel('Nome').fill('Leg press 45°');
+await page.getByLabel('Nome').fill('Meu leg press 45');
 await page.locator('select').nth(0).selectOption('Quadríceps');
-await page.locator('select').nth(2).selectOption('leg_press');
+await page.locator('select').nth(3).selectOption('leg_press');
 await wait(200);
 ok(await page.locator('.thumb.lg svg').count() === 1, 'pré-visualização da animação escolhida');
 await tap('Salvar', { exact: true });
 await page.waitForSelector('.visual');
 await wait(700);
 ok(await page.locator('.visual svg').count() > 0, 'exercício criado exibe animação da modelo');
-const exId = await ev(async () => [...(await import('/js/store.js')).state.exercises.values()].find((e) => e.name === 'Leg press 45°')?.id);
+const exId = await ev(async () => [...(await import('/js/store.js')).state.exercises.values()].find((e) => e.name === 'Meu leg press 45')?.id);
 ok(!!exId, 'exercício personalizado salvo na biblioteca');
 
 // ---------------------------------------------------------------- mídia
@@ -124,7 +124,7 @@ ok(itD.sets === 4 && itD.reps === 8 && itD.load === 30 && itD.rest === 60, 'item
 await page.locator('.ex-row .meta').nth(1).click();
 await page.getByRole('button', { name: /Substituir por outro exercício/ }).click();
 await page.waitForSelector('.sheet .li');
-await page.locator('.sheet .li', { hasText: 'Leg press 45°' }).click();
+await page.locator('.sheet .li', { hasText: 'Meu leg press 45' }).click();
 await wait(400);
 const items2 = await ev(async () => (await import('/js/store.js')).state.workouts.find((w) => w.name === 'Treino D').items.map((i) => i.exerciseId));
 ok(items2[1] === exId, 'exercício substituído por outro');
@@ -192,12 +192,12 @@ await page.waitForFunction(async () => (await import('/js/store.js')).state.work
 await page.waitForSelector('.wk-card');
 const imp = await ev(async () => { const s = await import('/js/store.js'); return s.state.workouts.filter((w) => w.imported).map((w) => ({ n: w.name, items: w.items.map((i) => [s.getExercise(i.exerciseId).name, i.sets, i.reps, i.load, i.rest]) })); });
 const A = imp.find((w) => w.n === 'Treino A');
-ok(A && A.items.length === 4 && A.items[0][0] === 'Leg press' && A.items[0][1] === 4 && A.items[0][2] === 12 && A.items[0][3] === 80 && A.items[0][4] === 90, 'Treino A importado: Leg press 4×12, 80 kg, 90 s');
+ok(A && A.items.length === 4 && A.items[0][0].startsWith('Leg press') && A.items[0][1] === 4 && A.items[0][2] === 12 && A.items[0][3] === 80 && A.items[0][4] === 90, 'Treino A importado: Leg press 4×12, 80 kg, 90 s');
 ok(A.items[1][0] === 'Cadeira extensora' && A.items[1][2] === 15 && A.items[1][3] === 30, 'nome curto “Extensora” associado a “Cadeira extensora” (15 reps, 30 kg)');
 console.log('   importados:', JSON.stringify(imp.map((w) => [w.n, w.items.length])));
 const Bw = imp.find((w) => w.n === 'Treino B');
 ok(Bw.items[0][4] === 120 && Bw.items[0][1] === 4 && Bw.items[0][2] === 8, 'descanso “2min” = 120 s; 4×8');
-ok(Bw.items[2][0] === 'Prancha' && Bw.items[2][2] === 30, 'prancha 3×30 s');
+ok(Bw.items[2][0].startsWith('Prancha') && Bw.items[2][2] === 30, 'prancha 3×30 s');
 
 // ---------------------------------------------------------------- histórico antigo íntegro
 step('6. Mudanças na rotina não alteram o histórico antigo');
@@ -208,6 +208,33 @@ const lp = await ev(async () => (await import('/js/store.js')).getExercise('ex-l
 ok(lp && lp.archived === true, 'exercício com histórico é arquivado (não apagado)');
 await page.goto(BASE + '#/evolucao'); await page.waitForSelector('.chart svg');
 ok(await page.locator('.chart svg').count() > 0, 'evolução continua exibindo o histórico antigo');
+
+// ---------------------------------------------------------------- migração da biblioteca antiga
+step('7. Migração: instalação antiga (v1) → biblioteca e treinos novos');
+await ev(async () => {
+  const db = await import('/js/db.js');
+  await db.wipeAll();
+  await db.kvSet('profile', { name: 'Antiga', createdAt: 1 });
+  await db.kvSet('meta', { seedVersion: 1 });
+  const old = (id, name) => ({ id, name, group: 'Outro', secondary: [], equipment: 'Máquina', art: null, instructions: [], defaults: { sets: 3, reps: 12, load: 0, rest: 90 }, repUnit: 'reps', bodyweight: false, notes: '', builtin: true, archived: false });
+  await db.putMany('exercises', [old('ex-stiff', 'Stiff com halteres'), old('ex-panturrilha', 'Elevação de panturrilha em pé')]);
+  await db.put('workouts', { id: 'w-old', name: 'Treino A', description: 'Exemplo', example: true, items: [{ id: 'i1', exerciseId: 'ex-stiff', sets: 3, reps: 12, load: 0, rest: 90 }], order: 0 });
+  await db.put('sessions', { id: 's-old', workoutId: 'w-old', workoutName: 'Treino A', startedAt: Date.now() - 86400000 * 30, endedAt: Date.now() - 86400000 * 30 + 1000, durationSec: 1000,
+    exercises: [{ exerciseId: 'ex-panturrilha', name: 'Elevação de panturrilha em pé', status: 'done', repUnit: 'reps', planned: { sets: 1, reps: 15, load: 8, rest: 60 }, sets: [{ n: 1, reps: 15, load: 8, restActual: 60 }] }] });
+});
+await page.goto(BASE);
+await page.waitForSelector('.next-card');
+const mig = await ev(async () => {
+  const s = await import('/js/store.js');
+  return { ex: [...s.state.exercises.values()].length, stiff: !!s.getExercise('ex-stiff'), pant: s.getExercise('ex-panturrilha'), wks: s.state.workouts.map((w) => w.name), sess: s.state.sessions.length, ver: s.state.meta.libVersion };
+});
+ok(!mig.stiff, 'exercício antigo sem histórico foi excluído');
+ok(mig.pant && mig.pant.archived === true && mig.sess === 1, 'exercício antigo COM histórico foi arquivado (histórico intacto)');
+ok(mig.ex === 50 + 1 && mig.ver === 2, `biblioteca nova instalada (${mig.ex} itens incl. 1 arquivado)`);
+ok(JSON.stringify(mig.wks) === JSON.stringify(['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta']), 'treino de exemplo removido; Segunda–Sexta criados');
+ok(['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'].includes(await page.locator('.next-card h2').innerText()), 'início mostra o treino da semana');
+const firstItems = await ev(async () => { const s = await import('/js/store.js'); return s.state.workouts[0].items.slice(0, 4).map((i) => s.getExercise(i.exerciseId).kind); });
+ok(JSON.stringify(firstItems) === JSON.stringify(['alongamento', 'alongamento', 'mobilidade', 'mobilidade']), 'cada treino começa com 2 alongamentos + 2 mobilidades');
 
 console.log('\n──────────────────────────────');
 console.log(`${passed} verificações OK, ${failed} falharam, ${errors.length} erros de console`);

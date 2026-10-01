@@ -31,9 +31,9 @@ test('sem cabeçalho: cria um treino padrão e não inventa exercícios', () => 
 
 test('associação com a biblioteca: nomes curtos, sem acento, e novo quando não existe', () => {
   assert.equal(matchExercise('Extensora', lib).id, 'ex-extensora');
-  assert.equal(matchExercise('cadeira flexora', lib).id, 'ex-flexora');
+  assert.equal(matchExercise('mesa flexora', lib).id, 'ex-flexora-deitada');
   assert.equal(matchExercise('Elevacao pelvica', lib).id, 'ex-pelvica');
-  assert.equal(matchExercise('Stiff', lib).id, 'ex-stiff');
+  assert.equal(matchExercise('Leg press 45', lib).id, 'ex-leg-press-45');
   assert.equal(matchExercise('Rosca scott', lib), null);
   assert.equal(matchExercise('', lib), null);
 });

@@ -1,13 +1,13 @@
 // Biblioteca de exercícios, tela do exercício (animação + histórico + mídia) e edição.
-import { h, clear, fmtNum, fmtDur, fmtDate, fmtTime, norm, groupBy } from '../util.js';
+import { h, clear, fmtNum, fmtDur, fmtDate, fmtTime, norm, groupBy, isTimed, unitShort, unitLong } from '../util.js';
 import * as store from '../store.js';
 import { app } from '../app.js';
 import {
   btn, icon, iconBtn, pageHead, chips, field, textInput, textArea, selectInput, stepper, openSheet, confirmDialog, menuSheet, toast, empty, segmented,
 } from '../ui.js';
 import { exerciseVisual, exThumb, destroyTree, artFor } from '../visual.js';
-import { GROUPS, EQUIPMENT, effortLabel } from '../data/seed.js';
-import { ART_KEYS, artLabel } from '../figure/arts.js';
+import { GROUPS, EQUIPMENT, KINDS, effortLabel } from '../data/seed.js';
+import { artKeys, artLabel } from '../figure/arts.js';
 import { thumbSvg } from '../figure/scene.js';
 import { exerciseEntries } from '../stats.js';
 import { timeChart } from '../charts.js';
@@ -34,7 +34,7 @@ export function libraryView() {
     for (const [g, arr] of groupBy(items, (e) => e.group)) {
       list.appendChild(h('div', { class: 'group-h' }, g));
       list.appendChild(h('div', { class: 'list' }, arr.map((e) => h('a', { class: 'li', href: `#/exercicio/${e.id}` },
-        exThumb(e), h('div', { class: 'grow' }, h('div', { class: 't' }, e.name), h('div', { class: 's' }, [e.equipment, artFor(e) ? 'com animação' : (store.listMedia(e.id).length ? 'com mídia própria' : 'sem mídia')].join(' · '))),
+        exThumb(e), h('div', { class: 'grow' }, h('div', { class: 't' }, e.name), h('div', { class: 's' }, [e.kind && e.kind !== 'forca' ? KINDS[e.kind] : null, e.equipment, artFor(e) ? 'com animação' : (store.listMedia(e.id).length ? 'com mídia própria' : 'sem mídia')].filter(Boolean).join(' · '))),
         e.archived ? h('span', { class: 'badge warn' }, 'Arquivado') : null,
         h('span', { class: 'end', html: icon('right', 18) })))));
     }
@@ -80,7 +80,7 @@ export function exerciseView([id], query) {
     h('div', { class: 'row' }, h('span', { class: 'ico', html: icon('dumbbell', 20) }), h('span', null, h('b', null, 'Aparelho: '), ex.equipment || '—')),
     h('div', { class: 'plan-grid' },
       h('div', { class: 'cell' }, h('b', null, loadText(ex, plan.load)), h('span', null, 'Carga')),
-      h('div', { class: 'cell' }, h('b', null, setsRepsText(ex, plan)), h('span', null, ex.repUnit === 'seg' ? 'Séries × tempo' : 'Séries × reps')),
+      h('div', { class: 'cell' }, h('b', null, setsRepsText(ex, plan)), h('span', null, isTimed(ex.repUnit) ? 'Séries × tempo' : 'Séries × reps')),
       h('div', { class: 'cell' }, h('b', null, restText(plan.rest)), h('span', null, 'Descanso'))),
     ex.instructions?.length ? h('ol', { class: 'steps' }, ex.instructions.map((s) => h('li', null, s))) : null,
     ex.notes ? h('p', { class: 'muted', style: { marginTop: '10px' } }, h('b', null, 'Observações: '), ex.notes) : null));
@@ -129,13 +129,13 @@ export function historyBlock(ex) {
   const root = h('div');
   if (!entries.length) return h('div', { class: 'card' }, h('p', { class: 'muted' }, 'Sem registros ainda. Depois do primeiro treino com este exercício, a linha do tempo e o gráfico aparecem aqui.'));
   const asc = [...entries].reverse();
-  let metric = ex.repUnit === 'seg' ? 'reps' : 'load';
+  let metric = isTimed(ex.repUnit) ? 'reps' : 'load';
   const chartHost = h('div');
   const draw = () => {
     clear(chartHost);
     const defs = {
       load: { name: 'Carga máxima', unit: 'kg', get: (e) => e.maxLoad, fmt: (v) => `${fmtNum(v, 1)} kg` },
-      reps: { name: ex.repUnit === 'seg' ? 'Tempo total' : 'Repetições totais', unit: ex.repUnit === 'seg' ? 's' : '', get: (e) => e.totalReps, fmt: (v) => fmtNum(v, 0) },
+      reps: { name: isTimed(ex.repUnit) ? 'Tempo total' : 'Repetições totais', unit: isTimed(ex.repUnit) ? unitShort(ex.repUnit) : '', get: (e) => e.totalReps, fmt: (v) => fmtNum(v, 0) },
       volume: { name: 'Volume', unit: 'kg', get: (e) => e.volume, fmt: (v) => `${fmtNum(v, 0)} kg` },
       dur: { name: 'Duração do exercício', unit: 'min', get: (e) => (e.durationSec || 0) / 60, fmt: (v) => `${fmtNum(v, 1)} min` },
       rest: { name: 'Descanso total', unit: 'min', get: (e) => (e.restTotal || 0) / 60, fmt: (v) => `${fmtNum(v, 1)} min` },
@@ -147,7 +147,7 @@ export function historyBlock(ex) {
       from: data.length > 1 ? data[0].t - 86400000 : data[0].t - 3 * 86400000, to: data[data.length - 1].t + (data.length > 1 ? 86400000 : 3 * 86400000), ariaLabel: `${d.name} por sessão`,
     }));
   };
-  const metricChips = chips({ options: METRICS.filter(([k]) => !(ex.repUnit === 'seg' && (k === 'load' || k === 'volume'))), value: metric, cls: 'scroll', onChange: (v) => { metric = v; draw(); } });
+  const metricChips = chips({ options: METRICS.filter(([k]) => !(isTimed(ex.repUnit) && (k === 'load' || k === 'volume'))), value: metric, cls: 'scroll', onChange: (v) => { metric = v; draw(); } });
   root.appendChild(h('div', { class: 'card' }, metricChips, chartHost));
   draw();
 
@@ -161,7 +161,7 @@ export function historyBlock(ex) {
         h('div', { class: 'tl-date' }, fmtDate(e.startedAt, { year: true }), h('span', { class: 'muted', style: { fontWeight: 600 } }, ` · ${e.workoutName || 'Treino'} · ${fmtTime(e.startedAt)}`)),
         h('div', { class: 'tl-sets' }, e.sets.map((s) => h('div', { class: 'setline' }, h('b', null, setLineText(ex, s)), setExtras(s) ? h('span', { class: 'eff' }, setExtras(s)) : null))),
         h('div', { class: 'tl-meta' }, [
-          e.repUnit === 'seg' ? null : `Volume ${fmtNum(e.volume, 0)} kg`,
+          isTimed(e.repUnit) ? null : `Volume ${fmtNum(e.volume, 0)} kg`,
           e.durationSec ? `Duração ${fmtDur(e.durationSec)}` : null,
           e.restTotal ? `Descanso ${fmtDur(e.restTotal)}` : null,
           e.plannedLoad != null && e.sets.some((s) => (s.load || 0) !== (e.plannedLoad || 0)) ? `Planejado: ${loadText(ex, e.plannedLoad)}` : null,
@@ -252,8 +252,9 @@ export function exerciseEditView([id], query) {
   const group = selectInput(GROUPS, base.group);
   const secondary = chips({ options: GROUPS.filter((g) => g !== 'Outro'), value: base.secondary, multi: true });
   const equip = selectInput(EQUIPMENT, base.equipment);
+  const kindSel = selectInput(Object.entries(KINDS), base.kind || 'forca');
   let art = base.art || '';
-  const artSel = selectInput([['', 'Nenhum (usar minha foto/vídeo)'], ...ART_KEYS.map((k) => [k, artLabel(k)])], art);
+  const artSel = selectInput([['', 'Nenhum (usar minha foto/vídeo)'], ...artKeys().map((k) => [k, artLabel(k)])], art);
   const artPrev = h('div', { class: 'thumb lg', style: { width: '100%', height: 'auto', aspectRatio: '4/3', borderRadius: '16px' } });
   const showArt = () => { art = artSel.value; artPrev.innerHTML = art ? thumbSvg(art, 0.62) : ''; artPrev.style.display = art ? '' : 'none'; };
   artSel.addEventListener('change', showArt); showArt();
@@ -265,16 +266,16 @@ export function exerciseEditView([id], query) {
   const sRest = stepper({ value: d.rest, min: 0, max: 900, step: 15, decimals: 0, unit: 's' });
   const sStep = stepper({ value: d.loadStep ?? 2, min: 0.5, max: 20, step: 0.5, unit: 'kg' });
   const bw = h('input', { type: 'checkbox', checked: base.bodyweight });
-  const unit = selectInput([['reps', 'Repetições'], ['seg', 'Tempo (segundos)']], base.repUnit || 'reps');
+  const unit = selectInput([['reps', 'Repetições'], ['seg', 'Tempo (segundos)'], ['min', 'Tempo (minutos)']], base.repUnit || 'reps');
   const notes = textArea(base.notes || '', { placeholder: 'Ajustes de banco, regulagem do aparelho, cuidados…' });
 
   root.append(
     h('div', { class: 'card' },
-      field('Nome', name), field('Grupo muscular principal', group), field('Músculos secundários', secondary), field('Aparelho / equipamento', equip)),
+      field('Nome', name), field('Grupo muscular principal', group), field('Músculos secundários', secondary), field('Aparelho / equipamento', equip), field('Tipo', kindSel)),
     h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'Representação visual'),
       field('Modelo de animação', artSel, 'Escolha a animação (modelo feminina) que mais se parece com o seu exercício. Você também pode adicionar fotos e vídeos próprios depois de salvar.'), artPrev),
     h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'Padrões'),
-      h('div', { class: 'two' }, field('Séries', sSets), field(unit.value === 'seg' ? 'Tempo (s)' : 'Repetições', sReps)),
+      h('div', { class: 'two' }, field('Séries', sSets), field(isTimed(unit.value) ? `Tempo (${unitShort(unit.value)})` : 'Repetições', sReps)),
       h('div', { class: 'two' }, field('Carga', sLoad), field('Descanso', sRest)),
       field('Medido em', unit),
       h('label', { class: 'switch' }, h('span', null, 'Sem carga externa', h('small', null, 'Peso corporal (agachamento livre, prancha…)')), bw),
@@ -287,7 +288,7 @@ export function exerciseEditView([id], query) {
   async function save() {
     if (!name.value.trim()) { toast('Dê um nome ao exercício.'); name.focus(); return; }
     const rec = {
-      ...base, name: name.value.trim(), group: group.value, secondary: secondary.get(), equipment: equip.value, art: artSel.value || null,
+      ...base, name: name.value.trim(), group: group.value, secondary: secondary.get(), equipment: equip.value, kind: kindSel.value, art: artSel.value || null,
       instructions: instr.value.split('\n').map((s) => s.trim()).filter(Boolean),
       defaults: { sets: sSets.get(), reps: sReps.get(), load: sLoad.get(), rest: sRest.get(), loadStep: sStep.get() },
       repUnit: unit.value, bodyweight: bw.checked, notes: notes.value.trim(),

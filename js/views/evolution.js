@@ -1,5 +1,5 @@
 // Evolução: cargas, repetições, volume, frequência, duração, descanso, peso, músculos, atividades, progressões.
-import { h, clear, fmtNum, fmtDur, fmtDate, dateKey, parseKey, parseNum, startOfDay, sum, avg, DIAS_SEMANA } from '../util.js';
+import { h, clear, fmtNum, fmtDur, fmtDate, dateKey, parseKey, parseNum, startOfDay, sum, avg, DIAS_SEMANA, isTimed, unitShort, unitLong } from '../util.js';
 import * as store from '../store.js';
 import { app } from '../app.js';
 import { btn, icon, chips, field, numInput, readNum, openSheet, toast, empty, selectInput, pageHead } from '../ui.js';
@@ -101,7 +101,7 @@ function exerciseSection(eff, range) {
     clear(host);
     box.querySelector('#ex-link').setAttribute('href', `#/exercicio/${exSel}`);
     const ex = st.exercises.get(exSel);
-    if (exMetric === 'load' && ex && (ex.bodyweight || ex.repUnit === 'seg')) exMetric = 'reps';
+    if (exMetric === 'load' && ex && (ex.bodyweight || isTimed(ex.repUnit))) exMetric = 'reps';
     const entries = exerciseEntries(st.sessions, exSel, st.wellbeing).filter((e) => inRange(e.startedAt, range)).reverse();
     if (!entries.length) { host.appendChild(h('p', { class: 'muted', style: { padding: '12px 0' } }, 'Sem registros deste exercício no período.')); return; }
     const defs = {

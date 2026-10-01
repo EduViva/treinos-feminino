@@ -8,174 +8,220 @@ export const GROUPS = [
 ];
 
 export const EQUIPMENT = [
-  'Máquina', 'Polia / cabo', 'Halteres', 'Barra', 'Banco', 'Peso corporal', 'Kettlebell', 'Elástico', 'Outro',
+  'Máquina', 'Polia / cabo', 'Halteres', 'Barra', 'Smith', 'Banco', 'Peso corporal', 'Cardio', 'Kettlebell', 'Elástico', 'Outro',
 ];
+
+export const KINDS = { forca: 'Musculação', alongamento: 'Alongamento', mobilidade: 'Mobilidade', cardio: 'Cardio' };
 
 export const MEDIA_LIMITS = { imageMaxPx: 1600, videoWarnMB: 60 };
 
-const ex = (id, name, group, secondary, equipment, art, instructions, d = {}) => ({
-  id, name, group, secondary, equipment, art,
-  instructions,
-  defaults: { sets: 3, reps: 12, load: 0, rest: 90, loadStep: 2, ...d },
-  repUnit: d.repUnit || 'reps',
-  bodyweight: !!d.bodyweight,
-  notes: '', mediaPrimary: null,
-  builtin: true, archived: false,
-});
+// Biblioteca padrão (lista da usuária). Tudo é editável; cargas ficam em branco (a usuária define).
+// ex(id, nome, grupo, secundários, aparelho, animação, instruções, padrões)
+const ex = (id, name, group, secondary, equipment, art, instructions, d = {}) => {
+  const kind = d.kind || 'forca';
+  const timed = d.repUnit && d.repUnit !== 'reps';
+  return {
+    id, name, group, secondary, equipment, art, instructions, kind,
+    defaults: { sets: 4, reps: 12, load: 0, rest: 90, loadStep: 2, ...d.defaults },
+    repUnit: d.repUnit || 'reps',
+    bodyweight: !!d.bodyweight || kind !== 'forca' || equipment === 'Peso corporal',
+    notes: '', mediaPrimary: null, builtin: true, archived: false,
+    ...(timed ? {} : {}),
+  };
+};
+const M = (id, n, g, sec, art, ins, extra = {}) => ex(id, n, g, sec, extra.eq || 'Máquina', art, ins, extra);
+const STRETCH = { kind: 'alongamento', repUnit: 'seg', defaults: { sets: 2, reps: 30, rest: 10 } };
+const MOB = { kind: 'mobilidade', defaults: { sets: 2, reps: 10, rest: 15 } };
 
 export const SEED_EXERCISES = [
-  ex('ex-leg-press', 'Leg press', 'Quadríceps', ['Glúteos', 'Posteriores'], 'Máquina', 'leg_press', [
-    'Sente com a lombar e o quadril bem apoiados no encosto.',
-    'Pés na largura dos ombros, centralizados na plataforma.',
-    'Empurre a plataforma até quase estender os joelhos, sem travá-los.',
-    'Volte devagar até os joelhos formarem cerca de 90°, sem tirar o quadril do banco.',
-  ], { loadStep: 5 }),
-  ex('ex-extensora', 'Cadeira extensora', 'Quadríceps', [], 'Máquina', 'leg_extension', [
-    'Ajuste o encosto: o joelho deve ficar alinhado com o eixo da máquina.',
-    'O apoio fica logo acima do tornozelo.',
-    'Estenda os joelhos até quase retos e segure 1 segundo.',
-    'Desça devagar, controlando o peso.',
-  ], { loadStep: 5 }),
-  ex('ex-flexora', 'Cadeira flexora', 'Posteriores', ['Panturrilhas'], 'Máquina', 'leg_curl', [
-    'Ajuste o encosto e o apoio das coxas para o joelho ficar no eixo.',
-    'O rolo fica na parte de trás do tornozelo.',
-    'Flexione os joelhos puxando os calcanhares para baixo do assento.',
-    'Volte devagar até quase estender as pernas.',
-  ], { loadStep: 5 }),
-  ex('ex-abdutora', 'Cadeira abdutora', 'Abdutores', ['Glúteos'], 'Máquina', 'hip_abduction', [
-    'Sente com as costas apoiadas; os apoios ficam na parte externa dos joelhos.',
-    'Abra as pernas empurrando os apoios para fora, sem balançar o tronco.',
-    'Segure 1 segundo com as pernas abertas.',
-    'Volte devagar, sem deixar o peso bater.',
-  ], { loadStep: 5 }),
-  ex('ex-adutora', 'Cadeira adutora', 'Adutores', [], 'Máquina', 'hip_adduction', [
-    'Sente com as costas apoiadas; os apoios ficam na parte interna dos joelhos.',
-    'Feche as pernas levando os apoios para o centro, sem balançar o tronco.',
-    'Segure 1 segundo com as pernas fechadas.',
-    'Abra devagar, controlando o peso.',
-  ], { loadStep: 5 }),
-  ex('ex-pelvica', 'Elevação pélvica', 'Glúteos', ['Posteriores'], 'Barra', 'hip_thrust', [
-    'Apoie a parte de cima das costas no banco; barra (ou anilha) sobre o quadril.',
-    'Pés no chão, joelhos dobrados em cerca de 90° no alto.',
-    'Eleve o quadril contraindo os glúteos até o corpo formar uma linha do ombro ao joelho.',
-    'Desça devagar sem apoiar totalmente o peso no chão.',
-  ], { loadStep: 5 }),
-  ex('ex-panturrilha', 'Elevação de panturrilha em pé', 'Panturrilhas', [], 'Halteres', 'calf_raise', [
-    'Em pé, com a ponta dos pés apoiada (no chão ou em um degrau).',
-    'Suba o máximo que conseguir, sobre a ponta dos pés.',
-    'Segure 1 segundo no alto.',
-    'Desça devagar, alongando a panturrilha.',
-  ], { reps: 15, rest: 60, loadStep: 2 }),
-  ex('ex-agachamento', 'Agachamento livre', 'Quadríceps', ['Glúteos', 'Posteriores'], 'Peso corporal', 'squat', [
-    'Pés na largura dos ombros, pontas levemente para fora.',
-    'Leve o quadril para trás e para baixo, joelhos na direção dos pés.',
-    'Desça até as coxas ficarem paralelas ao chão (ou o máximo que conseguir com boa postura).',
-    'Suba empurrando o chão com os pés, mantendo o tronco firme.',
-  ], { bodyweight: true }),
-  ex('ex-goblet', 'Agachamento com halter (goblet)', 'Quadríceps', ['Glúteos', 'Abdômen'], 'Halteres', 'goblet_squat', [
-    'Segure o halter junto ao peito, cotovelos apontando para baixo.',
-    'Desça o quadril para trás e para baixo, com o tronco ereto.',
-    'Desça até as coxas ficarem paralelas ao chão.',
-    'Suba empurrando o chão com os pés.',
-  ], { loadStep: 2 }),
-  ex('ex-afundo', 'Afundo (avanço)', 'Quadríceps', ['Glúteos', 'Posteriores'], 'Peso corporal', 'lunge', [
-    'Dê um passo largo à frente, com o tronco ereto.',
-    'Desça até o joelho da frente formar cerca de 90°; o de trás aproxima-se do chão.',
-    'O joelho da frente não passa muito da ponta do pé.',
-    'Empurre o chão com o pé da frente para voltar à posição inicial.',
-  ], { bodyweight: true }),
-  ex('ex-stiff', 'Stiff com halteres', 'Posteriores', ['Glúteos', 'Lombar'], 'Halteres', 'rdl', [
-    'Em pé, joelhos levemente flexionados, halteres à frente das coxas.',
-    'Leve o quadril para trás, inclinando o tronco com a coluna reta.',
-    'Desça os halteres rente às pernas até sentir o alongamento atrás das coxas.',
-    'Volte empurrando o quadril para frente, contraindo os glúteos.',
-  ], { loadStep: 2 }),
-  ex('ex-gluteo-polia', 'Glúteo na polia (coice)', 'Glúteos', ['Posteriores'], 'Polia / cabo', 'cable_kickback', [
-    'Prenda a tornozeleira no tornozelo e segure a torre com as duas mãos.',
-    'Incline levemente o tronco para frente, abdômen firme.',
-    'Leve a perna para trás e para cima contraindo o glúteo, sem arquear a lombar.',
-    'Volte devagar sem deixar o peso encostar.',
-  ], { reps: 12, rest: 60, loadStep: 2 }),
-  ex('ex-supino-maq', 'Supino na máquina', 'Peito', ['Ombros', 'Tríceps'], 'Máquina', 'chest_press', [
-    'Ajuste o banco: as pegadas ficam na altura do meio do peito.',
-    'Costas apoiadas; ombros para baixo e para trás.',
-    'Empurre até quase estender os cotovelos, sem travar.',
-    'Volte devagar até sentir o peito alongar.',
-  ], { loadStep: 5 }),
-  ex('ex-puxada', 'Puxada alta', 'Costas', ['Bíceps', 'Ombros'], 'Polia / cabo', 'lat_pulldown', [
-    'Ajuste o apoio das coxas; pegada um pouco mais larga que os ombros.',
-    'Puxe a barra até a altura do peito, levando os cotovelos para baixo.',
-    'Aperte as escápulas no final.',
-    'Suba devagar até os braços quase esticados.',
-  ], { loadStep: 5 }),
-  ex('ex-remada', 'Remada sentada', 'Costas', ['Bíceps', 'Ombros'], 'Polia / cabo', 'seated_row', [
-    'Pés apoiados, joelhos levemente flexionados, tronco ereto.',
-    'Puxe o triângulo em direção ao abdômen, cotovelos junto ao corpo.',
-    'Aperte as escápulas no final, sem jogar o tronco para trás.',
-    'Volte devagar, alongando as costas sem arredondar a coluna.',
-  ], { loadStep: 5 }),
-  ex('ex-desenvolvimento', 'Desenvolvimento com halteres', 'Ombros', ['Tríceps'], 'Halteres', 'shoulder_press', [
-    'Sentada com as costas apoiadas, halteres na altura dos ombros.',
-    'Empurre os halteres para cima até quase estender os cotovelos.',
-    'Não arqueie a lombar e mantenha o abdômen firme.',
-    'Desça devagar até a altura das orelhas.',
-  ], { loadStep: 1 }),
-  ex('ex-elev-lateral', 'Elevação lateral', 'Ombros', [], 'Halteres', 'lateral_raise', [
-    'Em pé, halteres ao lado do corpo, cotovelos levemente flexionados.',
-    'Eleve os braços para os lados até a altura dos ombros.',
-    'Não balance o tronco nem encolha os ombros.',
-    'Desça devagar.',
-  ], { reps: 12, rest: 60, loadStep: 1 }),
-  ex('ex-rosca', 'Rosca direta com halteres', 'Bíceps', [], 'Halteres', 'biceps_curl', [
-    'Em pé, halteres ao lado do corpo, palmas para frente.',
-    'Flexione os cotovelos levando os halteres aos ombros, com os cotovelos fixos junto ao corpo.',
-    'Aperte o bíceps em cima.',
-    'Desça devagar até estender os braços.',
-  ], { rest: 60, loadStep: 1 }),
-  ex('ex-triceps-polia', 'Tríceps na polia', 'Tríceps', [], 'Polia / cabo', 'triceps_pushdown', [
-    'Em pé, perto da polia alta, cotovelos junto ao corpo.',
-    'Estenda os cotovelos empurrando a barra (ou corda) para baixo.',
-    'Só os antebraços se movem; os cotovelos ficam parados.',
-    'Volte devagar até os antebraços ficarem na horizontal.',
-  ], { rest: 60, loadStep: 2.5 }),
-  ex('ex-abdominal', 'Abdominal (crunch)', 'Abdômen', [], 'Peso corporal', 'crunch', [
-    'Deitada, joelhos dobrados, pés no chão; mãos leves atrás da cabeça.',
-    'Contraia o abdômen e eleve as escápulas do chão; o pescoço não puxa.',
-    'Segure 1 segundo no alto.',
-    'Desça devagar sem relaxar totalmente.',
-  ], { reps: 15, rest: 45, bodyweight: true }),
-  ex('ex-prancha', 'Prancha', 'Abdômen', ['Ombros', 'Glúteos'], 'Peso corporal', 'plank', [
-    'Antebraços no chão, cotovelos sob os ombros.',
-    'Corpo em linha reta da cabeça aos calcanhares.',
-    'Contraia abdômen e glúteos; não deixe o quadril cair nem subir.',
-    'Respire normalmente e segure o tempo planejado.',
-  ], { sets: 3, reps: 30, rest: 45, bodyweight: true, repUnit: 'seg' }),
+  // ---------------- Alongamentos (segundos) ----------------
+  ex('ex-al-dorsais', 'Alongamento de dorsais', 'Costas', ['Ombros'], 'Peso corporal', 'stretch_lats', [
+    'Em pé, mãos entrelaçadas à frente.', 'Empurre as mãos para frente e arredonde as costas.', 'Sinta o alongamento entre as escápulas e respire fundo.',
+  ], STRETCH),
+  ex('ex-al-biceps-ombro', 'Alongamento de bíceps e ombros', 'Bíceps', ['Ombros', 'Peito'], 'Peso corporal', 'stretch_biceps', [
+    'Em pé, braços estendidos ao lado do corpo.', 'Leve os braços para trás, com as palmas viradas para baixo.', 'Mantenha o peito aberto e sinta a frente do braço e do ombro.',
+  ], STRETCH),
+  ex('ex-al-peitoral', 'Alongamento de peitoral no batente', 'Peito', ['Ombros', 'Bíceps'], 'Peso corporal', 'stretch_chest', [
+    'Apoie os antebraços no batente, cotovelos na altura dos ombros.', 'Dê um passo à frente, deixando o peito passar pelo batente.', 'Sinta abrir o peito; mantenha o abdômen firme.',
+  ], STRETCH),
+  ex('ex-al-triceps', 'Alongamento de tríceps', 'Tríceps', ['Ombros'], 'Peso corporal', 'stretch_triceps', [
+    'Dobre um braço atrás da cabeça.', 'Com a outra mão, empurre suavemente o cotovelo para trás.', 'Sinta o alongamento no tríceps; depois troque de lado.',
+  ], STRETCH),
+  ex('ex-al-gluteo-4', 'Alongamento de glúteo (figura 4)', 'Glúteos', ['Posteriores'], 'Peso corporal', 'stretch_glute_fig4', [
+    'Deitada, joelhos dobrados e pés no chão.', 'Cruze um tornozelo sobre o joelho oposto.', 'Puxe a coxa de baixo em direção ao peito até sentir o glúteo alongar; troque de lado.',
+  ], STRETCH),
+  ex('ex-al-gluteo-joelho', 'Alongamento de glúteo (joelho ao peito)', 'Glúteos', ['Lombar', 'Posteriores'], 'Peso corporal', 'stretch_glute_knee', [
+    'Deitada de barriga para cima.', 'Abrace um joelho e traga-o em direção ao peito.', 'Mantenha a lombar apoiada no chão; troque de perna.',
+  ], STRETCH),
+  ex('ex-al-posterior-tronco', 'Alongamento de posterior (inclinação de tronco)', 'Posteriores', ['Lombar', 'Panturrilhas'], 'Peso corporal', 'stretch_fold', [
+    'Em pé, pernas estendidas.', 'Incline o tronco à frente, quadril para trás, mãos em direção aos pés.', 'Sinta atrás das coxas, sem forçar a lombar.',
+  ], STRETCH),
+  ex('ex-al-posterior-step', 'Alongamento de posterior com perna no step', 'Posteriores', ['Panturrilhas'], 'Peso corporal', 'stretch_hamstring_step', [
+    'Apoie um calcanhar no step, joelho quase estendido.', 'Incline o tronco com a coluna reta em direção ao pé apoiado.', 'Sinta atrás da coxa; troque de perna.',
+  ], STRETCH),
+  ex('ex-al-quadriceps', 'Alongamento de quadríceps em pé', 'Quadríceps', ['Abdômen'], 'Peso corporal', 'stretch_quad', [
+    'Em pé, apoie-se se precisar.', 'Dobre o joelho e segure o pé, levando o calcanhar ao glúteo.', 'Joelhos juntos e quadril para frente; troque de perna.',
+  ], STRETCH),
+
+  // ---------------- Mobilidade ----------------
+  ex('ex-mob-circulos-ombro', 'Círculos de ombro', 'Ombros', [], 'Peso corporal', 'mob_shoulder_circles', [
+    'Em pé, braços ao lado do corpo.', 'Faça círculos amplos com os braços, pelos lados e acima da cabeça.', 'Movimento controlado, sem encolher o pescoço.',
+  ], MOB),
+  ex('ex-mob-gato-camelo', 'Gato-camelo', 'Costas', ['Lombar', 'Abdômen'], 'Peso corporal', 'mob_cat_camel', [
+    'Quatro apoios: mãos sob os ombros e joelhos sob o quadril.', 'Arredonde a coluna e olhe para o umbigo.', 'Depois estenda a coluna olhando à frente; alterne devagar.',
+  ], MOB),
+  ex('ex-mob-rot-externa', 'Rotação externa de ombro', 'Ombros', ['Costas'], 'Peso corporal', 'mob_ext_rotation', [
+    'Cotovelos junto ao corpo, dobrados a 90°.', 'Gire os antebraços para fora sem afastar os cotovelos.', 'Volte devagar.',
+  ], MOB),
+  ex('ex-mob-abertura', 'Abertura de braços (mobilidade de tórax)', 'Peito', ['Ombros', 'Costas'], 'Peso corporal', 'mob_open_arms', [
+    'Em pé, braços cruzados à frente do peito.', 'Abra os braços para os lados levando as escápulas para trás.', 'Volte abraçando o corpo.',
+  ], MOB),
+  ex('ex-mob-ponte', 'Ponte de quadril (mobilidade)', 'Glúteos', ['Posteriores', 'Lombar'], 'Peso corporal', 'mob_glute_bridge', [
+    'Deitada, joelhos dobrados e pés no chão.', 'Eleve o quadril contraindo os glúteos.', 'Desça devagar, vértebra por vértebra.',
+  ], MOB),
+  ex('ex-mob-balanco-perna', 'Balanço de perna', 'Glúteos', ['Posteriores', 'Quadríceps'], 'Peso corporal', 'mob_leg_swing', [
+    'Em pé, uma mão apoiada na parede.', 'Balance a perna estendida para frente e para trás.', 'Aumente a amplitude aos poucos; tronco firme; troque de perna.',
+  ], MOB),
+  ex('ex-mob-agach-profundo', 'Agachamento profundo (mobilidade)', 'Quadríceps', ['Glúteos', 'Adutores'], 'Peso corporal', 'squat', [
+    'Pés um pouco mais afastados que os ombros.', 'Desça o quadril o máximo que a postura permitir, cotovelos empurrando os joelhos para fora.', 'Suba empurrando o chão.',
+  ], MOB),
+
+  // ---------------- Segunda: costas, bíceps e ombro ----------------
+  M('ex-voador-invertido', 'Voador invertido', 'Costas', ['Ombros', 'Tríceps'], 'reverse_fly', [
+    'Peito apoiado no encosto, braços à frente.', 'Abra os braços para trás levando os cotovelos para fora.', 'Aperte as escápulas e volte devagar.',
+  ], { defaults: { loadStep: 5 } }),
+  M('ex-puxada-supinada', 'Puxada fechada pegada supinada', 'Costas', ['Bíceps', 'Ombros'], 'lat_pulldown', [
+    'Pegada fechada com as palmas voltadas para você.', 'Puxe a barra até o peito levando os cotovelos para baixo.', 'Aperte as escápulas e volte devagar.',
+  ], { eq: 'Polia / cabo', defaults: { loadStep: 5 } }),
+  M('ex-serrote-maq', 'Serrote na máquina', 'Costas', ['Bíceps', 'Ombros'], 'seated_row', [
+    'Peito apoiado, um braço de cada vez.', 'Puxe o cotovelo para trás rente ao corpo.', 'Aperte a escápula e volte devagar.',
+  ], { defaults: { loadStep: 5 } }),
+  M('ex-face-pull', 'Face pull com corda', 'Ombros', ['Costas', 'Bíceps'], 'face_pull', [
+    'Corda na altura do rosto, braços estendidos.', 'Puxe em direção ao rosto abrindo os cotovelos.', 'Cotovelos altos, escápulas juntas; volte devagar.',
+  ], { eq: 'Polia / cabo', defaults: { loadStep: 2.5 } }),
+  M('ex-remada-alta', 'Remada alta na polia', 'Ombros', ['Costas', 'Bíceps'], 'upright_row', [
+    'Em pé, barra à frente das coxas.', 'Suba a barra rente ao corpo, cotovelos para cima.', 'Até a altura dos ombros, sem encolher o pescoço; desça devagar.',
+  ], { eq: 'Polia / cabo', defaults: { loadStep: 2.5 } }),
+  M('ex-rosca-w', 'Rosca direta com barra W', 'Bíceps', [], 'biceps_curl', [
+    'Em pé, barra W com pegada na largura dos ombros.', 'Flexione os cotovelos levando a barra aos ombros, sem balançar.', 'Desça devagar até estender os braços.',
+  ], { eq: 'Barra', defaults: { loadStep: 2 } }),
+  M('ex-desenv-maq', 'Desenvolvimento na máquina', 'Ombros', ['Tríceps'], 'shoulder_press', [
+    'Costas apoiadas, pegadas na altura dos ombros.', 'Empurre para cima até quase estender os cotovelos.', 'Desça devagar até a altura das orelhas.',
+  ], { defaults: { loadStep: 5 } }),
+  ex('ex-esteira', 'Esteira', 'Corpo inteiro', ['Quadríceps', 'Panturrilhas'], 'Cardio', 'treadmill', [
+    'Comece devagar e aumente a velocidade aos poucos.', 'Postura ereta, olhar à frente, braços acompanhando o passo.', 'Termine reduzindo o ritmo para recuperar a respiração.',
+  ], { kind: 'cardio', repUnit: 'min', bodyweight: true, defaults: { sets: 1, reps: 20, rest: 0 } }),
+
+  // ---------------- Terça: glúteo e posterior ----------------
+  M('ex-afundo-step', 'Afundo com pé da frente no step', 'Quadríceps', ['Glúteos', 'Posteriores'], 'lunge', [
+    'Pé da frente apoiado no step, tronco ereto.', 'Desça até o joelho de trás se aproximar do chão.', 'Empurre o step com o pé da frente para subir.',
+  ], { eq: 'Halteres', defaults: { loadStep: 1 } }),
+  M('ex-ext-quadril-polia', 'Extensão de quadril na polia', 'Glúteos', ['Posteriores'], 'cable_kickback', [
+    'Tornozeleira presa, mãos apoiadas na torre.', 'Leve a perna para trás e para cima contraindo o glúteo, sem arquear a lombar.', 'Volte devagar sem deixar o peso encostar.',
+  ], { eq: 'Polia / cabo', defaults: { loadStep: 2.5 } }),
+  M('ex-pelvica', 'Elevação pélvica', 'Glúteos', ['Posteriores', 'Quadríceps'], 'hip_thrust', [
+    'Parte alta das costas no banco, barra sobre o quadril.', 'Empurre o chão elevando o quadril até alinhar ombro e joelho.', 'Segure 1 segundo e desça devagar.',
+  ], { eq: 'Barra', defaults: { loadStep: 5 } }),
+  M('ex-flexora-deitada', 'Flexora deitada', 'Posteriores', ['Panturrilhas'], 'lying_leg_curl', [
+    'Deitada de bruços, rolo sobre os calcanhares.', 'Flexione os joelhos levando os calcanhares ao glúteo.', 'Volte devagar sem tirar o quadril do banco.',
+  ], { defaults: { loadStep: 5 } }),
+  ex('ex-abdominal-infra', 'Abdominal infra no solo', 'Abdômen', [], 'Peso corporal', 'reverse_crunch', [
+    'Deitada, joelhos dobrados sobre o quadril.', 'Contraia o abdômen e eleve o quadril do chão.', 'Desça devagar sem relaxar a barriga.',
+  ], { bodyweight: true, defaults: { sets: 1, reps: 20, rest: 45 } }),
+
+  // ---------------- Quarta: peito, tríceps e ombro ----------------
+  M('ex-voador', 'Voador', 'Peito', ['Ombros'], 'pec_fly', [
+    'Costas apoiadas, antebraços nos apoios.', 'Feche os braços à frente como num abraço.', 'Contraia o peito e volte devagar.',
+  ], { defaults: { loadStep: 5 } }),
+  M('ex-supino-reto', 'Supino reto com barra', 'Peito', ['Ombros', 'Tríceps'], 'bench_press', [
+    'Deitada no banco, pés firmes no chão.', 'Empurre a barra até estender os braços.', 'Desça devagar até tocar de leve o peito.',
+  ], { eq: 'Barra', defaults: { sets: 4, reps: 10, loadStep: 2.5 } }),
+  M('ex-supino-inclinado', 'Supino inclinado articulado', 'Peito', ['Ombros', 'Tríceps'], 'chest_press', [
+    'Banco inclinado, costas apoiadas.', 'Empurre até quase estender os cotovelos.', 'Volte devagar sentindo o peito alongar.',
+  ], { defaults: { loadStep: 5 } }),
+  M('ex-triceps-corda', 'Tríceps com corda na polia', 'Tríceps', [], 'triceps_pushdown', [
+    'Cotovelos junto ao corpo.', 'Estenda os cotovelos abrindo a corda no final.', 'Só os antebraços se movem; volte devagar.',
+  ], { eq: 'Polia / cabo', defaults: { loadStep: 2.5 } }),
+  M('ex-triceps-frances', 'Tríceps francês unilateral', 'Tríceps', ['Ombros'], 'overhead_triceps', [
+    'Halter acima da cabeça, braço estendido.', 'Dobre o cotovelo levando o halter atrás da cabeça.', 'Cotovelo parado apontando para cima; estenda de volta.',
+  ], { eq: 'Halteres', defaults: { sets: 3, loadStep: 1 } }),
+  M('ex-elev-lateral', 'Elevação lateral com halteres', 'Ombros', [], 'lateral_raise', [
+    'Halteres ao lado do corpo, cotovelos levemente flexionados.', 'Eleve os braços até a altura dos ombros.', 'Sem balançar o tronco; desça devagar.',
+  ], { eq: 'Halteres', defaults: { loadStep: 1 } }),
+  M('ex-elev-frontal', 'Elevação frontal com barra', 'Ombros', ['Peito'], 'front_raise', [
+    'Barra à frente das coxas, braços estendidos.', 'Eleve a barra à frente até a altura dos ombros.', 'Tronco firme; desça devagar.',
+  ], { eq: 'Barra', defaults: { sets: 3, loadStep: 2 } }),
+  ex('ex-escada', 'Escada', 'Corpo inteiro', ['Quadríceps', 'Glúteos'], 'Cardio', 'stairs', [
+    'Suba nos degraus com postura ereta, mãos leves no apoio.', 'Alterne os passos em ritmo constante.', 'Termine reduzindo o ritmo aos poucos.',
+  ], { kind: 'cardio', repUnit: 'min', bodyweight: true, defaults: { sets: 1, reps: 20, rest: 0 } }),
+
+  // ---------------- Quinta: quadríceps e posterior ----------------
+  M('ex-smith', 'Agachamento no Smith', 'Quadríceps', ['Glúteos', 'Posteriores'], 'smith_squat', [
+    'Barra apoiada nos ombros, pés um pouco à frente.', 'Desça flexionando joelhos e quadril até as coxas ficarem paralelas ao chão.', 'Suba empurrando o chão, sem travar os joelhos.',
+  ], { eq: 'Smith', defaults: { loadStep: 5 } }),
+  M('ex-hack', 'Agachamento hack', 'Quadríceps', ['Glúteos'], 'hack_squat', [
+    'Costas apoiadas, pés na plataforma.', 'Desça o carrinho até os joelhos formarem ~90°.', 'Empurre a plataforma para subir, sem travar os joelhos.',
+  ], { defaults: { loadStep: 5 } }),
+  M('ex-leg-press-45', 'Leg press 45°', 'Quadríceps', ['Glúteos', 'Posteriores'], 'leg_press_45', [
+    'Costas e quadril apoiados, pés na plataforma.', 'Empurre até quase estender os joelhos, sem travar.', 'Volte devagar sem tirar o quadril do banco.',
+  ], { defaults: { loadStep: 5 } }),
+  M('ex-adutora', 'Cadeira adutora', 'Adutores', [], 'hip_adduction', [
+    'Costas apoiadas, apoios na parte interna dos joelhos.', 'Feche as pernas sem balançar o tronco.', 'Abra devagar, controlando o peso.',
+  ], { defaults: { loadStep: 5 } }),
+  M('ex-flexora-em-pe', 'Flexora em pé unilateral', 'Posteriores', ['Panturrilhas'], 'standing_leg_curl', [
+    'Em pé, apoiada na máquina, rolo atrás do calcanhar.', 'Flexione o joelho levando o calcanhar ao glúteo.', 'Quadril parado; volte devagar; troque de perna.',
+  ], { defaults: { loadStep: 2.5 } }),
+  ex('ex-abdominal-curto', 'Abdominal curto no solo', 'Abdômen', [], 'Peso corporal', 'crunch', [
+    'Deitada, joelhos dobrados, mãos leves atrás da cabeça.', 'Contraia o abdômen e eleve as escápulas do chão.', 'Desça devagar sem relaxar totalmente.',
+  ], { bodyweight: true, defaults: { sets: 1, reps: 20, rest: 45 } }),
+
+  // ---------------- Sexta: glúteos e quadríceps ----------------
+  ex('ex-quatro-apoios', 'Glúteo em quatro apoios', 'Glúteos', ['Posteriores', 'Lombar'], 'Peso corporal', 'quadruped_kickback', [
+    'Quatro apoios: mãos sob os ombros, abdômen firme.', 'Eleve uma perna dobrada empurrando o calcanhar para o teto.', 'Coxa na altura do quadril, sem arquear a lombar; volte devagar.',
+  ], { eq: 'Peso corporal', bodyweight: false, defaults: { loadStep: 1 } }),
+  M('ex-afundo-smith', 'Afundo no Smith', 'Quadríceps', ['Glúteos', 'Posteriores'], 'lunge', [
+    'Barra apoiada nos ombros, uma perna à frente.', 'Desça até o joelho da frente formar ~90°.', 'Empurre o chão com o pé da frente para subir.',
+  ], { eq: 'Smith', defaults: { loadStep: 5 } }),
+  M('ex-extensora', 'Cadeira extensora', 'Quadríceps', [], 'leg_extension', [
+    'Joelho alinhado com o eixo; apoio logo acima do tornozelo.', 'Estenda os joelhos até quase retos e segure 1 segundo.', 'Desça devagar.',
+  ], { defaults: { loadStep: 5 } }),
+  M('ex-leg-press', 'Leg press horizontal', 'Quadríceps', ['Glúteos', 'Posteriores'], 'leg_press', [
+    'Lombar e quadril apoiados, pés na largura dos ombros.', 'Empurre a plataforma até quase estender os joelhos.', 'Volte devagar até ~90° sem tirar o quadril do banco.',
+  ], { defaults: { loadStep: 5 } }),
+  M('ex-sumo-step', 'Agachamento sumô no step', 'Adutores', ['Glúteos', 'Quadríceps'], 'sumo_squat', [
+    'Pés afastados sobre o step, pontas para fora, halter ao centro.', 'Desça o quadril com os joelhos abertos na direção dos pés.', 'Suba empurrando o chão e contraindo os glúteos.',
+  ], { eq: 'Halteres', defaults: { loadStep: 2 } }),
+  M('ex-abdutora', 'Cadeira abdutora', 'Abdutores', ['Glúteos'], 'hip_abduction', [
+    'Costas apoiadas, apoios na parte externa dos joelhos.', 'Abra as pernas sem balançar o tronco.', 'Segure 1 segundo e feche devagar.',
+  ], { defaults: { loadStep: 5 } }),
+  ex('ex-prancha', 'Prancha abdominal', 'Abdômen', ['Ombros', 'Glúteos'], 'Peso corporal', 'plank', [
+    'Antebraços no chão, cotovelos sob os ombros.', 'Corpo em linha reta da cabeça aos calcanhares.', 'Contraia abdômen e glúteos e respire normalmente.',
+  ], { bodyweight: true, repUnit: 'seg', defaults: { sets: 1, reps: 30, rest: 45 } }),
 ];
 
-// Treinos de exemplo (opcionais, 100% editáveis). Cargas ficam em branco de propósito.
-const item = (exerciseId, over = {}) => ({ exerciseId, ...over });
+// Treinos da semana (segunda a sexta). weekday: 1 = segunda … 5 = sexta.
+const I = (exerciseId, over = {}) => ({ exerciseId, ...over });
 export const SEED_WORKOUTS = [
-  {
-    name: 'Treino A', description: 'Exemplo: pernas e glúteos',
-    items: [
-      item('ex-leg-press'), item('ex-extensora'), item('ex-flexora'),
-      item('ex-abdutora', { reps: 15 }), item('ex-pelvica', { reps: 10 }), item('ex-panturrilha'),
-    ],
-  },
-  {
-    name: 'Treino B', description: 'Exemplo: superiores',
-    items: [
-      item('ex-supino-maq'), item('ex-puxada'), item('ex-remada'),
-      item('ex-desenvolvimento', { reps: 10 }), item('ex-rosca'), item('ex-triceps-polia'),
-    ],
-  },
-  {
-    name: 'Treino C', description: 'Exemplo: glúteos e core',
-    items: [
-      item('ex-agachamento'), item('ex-afundo', { reps: 10 }), item('ex-stiff'),
-      item('ex-gluteo-polia'), item('ex-adutora', { reps: 15 }), item('ex-abdominal'), item('ex-prancha'),
-    ],
-  },
+  { name: 'Segunda', weekday: 1, description: 'Costas, bíceps e ombro', items: [
+    I('ex-al-dorsais'), I('ex-al-biceps-ombro'), I('ex-mob-gato-camelo'), I('ex-mob-circulos-ombro'),
+    I('ex-voador-invertido'), I('ex-puxada-supinada'), I('ex-serrote-maq'), I('ex-face-pull'), I('ex-remada-alta'), I('ex-rosca-w'), I('ex-desenv-maq'), I('ex-esteira'),
+  ] },
+  { name: 'Terça', weekday: 2, description: 'Glúteo e posterior', items: [
+    I('ex-al-gluteo-4'), I('ex-al-posterior-tronco'), I('ex-mob-ponte'), I('ex-mob-balanco-perna'),
+    I('ex-afundo-step'), I('ex-ext-quadril-polia'), I('ex-pelvica'), I('ex-flexora-deitada'), I('ex-abdominal-infra'),
+  ] },
+  { name: 'Quarta', weekday: 3, description: 'Peito, tríceps e ombro', items: [
+    I('ex-al-peitoral'), I('ex-al-triceps'), I('ex-mob-rot-externa'), I('ex-mob-abertura'),
+    I('ex-voador'), I('ex-supino-reto'), I('ex-supino-inclinado'), I('ex-triceps-corda'), I('ex-triceps-frances'), I('ex-elev-lateral'), I('ex-elev-frontal'), I('ex-escada'),
+  ] },
+  { name: 'Quinta', weekday: 4, description: 'Quadríceps e posterior', items: [
+    I('ex-al-quadriceps'), I('ex-al-posterior-step'), I('ex-mob-agach-profundo'), I('ex-mob-balanco-perna'),
+    I('ex-smith'), I('ex-hack'), I('ex-leg-press-45'), I('ex-adutora'), I('ex-flexora-em-pe'), I('ex-abdominal-curto'),
+  ] },
+  { name: 'Sexta', weekday: 5, description: 'Glúteos e quadríceps', items: [
+    I('ex-al-gluteo-joelho'), I('ex-al-quadriceps'), I('ex-mob-ponte'), I('ex-mob-agach-profundo'),
+    I('ex-quatro-apoios'), I('ex-afundo-smith'), I('ex-extensora'), I('ex-leg-press'), I('ex-sumo-step'), I('ex-abdutora'), I('ex-prancha'),
+  ] },
 ];
 
 export const ACTIVITY_TYPES = [

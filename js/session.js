@@ -143,7 +143,7 @@ export class Session {
     } else {
       set.restStartedAt = t;
       c.phase = PHASE.REST;
-      c.rest = { startedAt: t, plannedSec: tgt.rest, endsAt: t + tgt.rest * 1000, setIdx: ex.sets.length - 1, next: lastOfExercise ? 'exercise' : 'set', ei: c.ei, alerted: false };
+      c.rest = { startedAt: t, plannedSec: tgt.rest, endsAt: t + tgt.rest * 1000, setIdx: ex.sets.length - 1, next: lastOfExercise ? 'exercise' : 'set', ei: c.ei, alerted: tgt.rest <= 0 };
     }
     this._save();
     return set;

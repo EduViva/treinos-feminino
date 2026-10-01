@@ -10,7 +10,7 @@
 //   headline, explanation (texto simples), checks[] (✓/✗ com os dados considerados),
 //   considered[] (sessões usadas), currentLoad, suggestedLoad, confidence, basis.
 
-import { fmtDate, fmtNum, round1, sum, median } from './util.js';
+import { fmtDate, fmtNum, round1, sum, median, isTimed, unitShort, unitLong } from './util.js';
 import { exerciseEntries } from './stats.js';
 import { effortLabel } from './data/seed.js';
 
@@ -62,9 +62,9 @@ function describeEntry(e) {
 
 export function evaluate({ entries, exercise, now = Date.now(), cfg = CONFIG }) {
   const base = { exerciseId: exercise?.id, config: cfg, canIgnore: true };
-  const used = (entries || []).filter((e) => e.repUnit !== 'seg' && e.sets.length);
+  const used = (entries || []).filter((e) => !isTimed(e.repUnit) && e.sets.length);
 
-  if (exercise?.repUnit === 'seg') {
+  if (isTimed(exercise?.repUnit)) {
     return { ...base, status: 'na', headline: 'Sem sugestão de carga para este exercício',
       explanation: 'Este exercício é medido em tempo (segundos). A progressão por carga não se aplica; acompanhe o tempo na Evolução.', checks: [], considered: [] };
   }

@@ -4,7 +4,7 @@ import { uid, dateKey, startOfDay } from './util.js';
 import { SEED_EXERCISES, SEED_WORKOUTS, MEDIA_LIMITS } from './data/seed.js';
 
 export const SCHEMA_VERSION = 1;
-const SEED_VERSION = 1;
+const SEED_VERSION = 2;
 
 export const DEFAULT_SETTINGS = {
   sound: true, vibration: true, wakeLock: true,
@@ -56,6 +56,7 @@ export async function init() {
     state.media.get(m.exerciseId).push(stripBlob(m));
   }
   for (const list of state.media.values()) list.sort((a, b) => a.createdAt - b.createdAt);
+  await migrate();
   state.ready = true;
   try {
     if (navigator.storage && navigator.storage.persist) {
@@ -76,6 +77,17 @@ async function maybeSeedLibrary() {
   if (fresh.length) await db.putMany('exercises', fresh);
   state.meta = { ...state.meta, seedVersion: SEED_VERSION };
   await db.kvSet('meta', state.meta);
+}
+
+// v2: biblioteca/treinos padrão da usuária. Remove os exercícios e treinos de exemplo da v1
+// (exercícios com histórico são arquivados, nunca apagados) e cria Segunda–Sexta se não houver treinos.
+async function migrate() {
+  if ((state.meta.libVersion || 0) >= 2) return;
+  const keep = new Set(SEED_EXERCISES.map((e) => e.id));
+  for (const e of [...state.exercises.values()]) if (e.builtin && !keep.has(e.id)) await removeExercise(e.id);
+  for (const w of [...state.workouts]) if (w.example) await deleteWorkout(w.id);
+  if (state.profile && !state.workouts.some((w) => !w.archived)) await loadSeedWorkouts();
+  await setMeta({ libVersion: 2 });
 }
 
 export const clone = (o) => (o == null ? o : JSON.parse(JSON.stringify(o)));
@@ -115,7 +127,7 @@ export function blankExercise() {
   return {
     id: uid(), name: '', group: 'Outro', secondary: [], equipment: 'Máquina', art: null,
     instructions: [], defaults: { sets: 3, reps: 12, load: 0, rest: state.settings.defaultRest, loadStep: 2 },
-    repUnit: 'reps', bodyweight: false, notes: '', mediaPrimary: null, builtin: false, archived: false,
+    repUnit: 'reps', kind: 'forca', bodyweight: false, notes: '', mediaPrimary: null, builtin: false, archived: false,
   };
 }
 
@@ -201,17 +213,30 @@ export async function reorderWorkouts(ids) {
 export async function loadSeedWorkouts() {
   for (const t of SEED_WORKOUTS) {
     const w = blankWorkout();
-    w.name = t.name; w.description = t.description; w.example = true;
+    w.name = t.name; w.description = t.description; w.weekday = t.weekday || null;
     w.items = t.items.filter((it) => state.exercises.has(it.exerciseId))
       .map((it) => newWorkoutItem(it.exerciseId, Object.fromEntries(Object.entries(it).filter(([k]) => k !== 'exerciseId'))));
     await saveWorkout(w);
   }
 }
 
-// Próximo treino: segue a ordem A → B → C a partir do último treino realizado.
+// Próximo treino. Com treinos por dia da semana: o de hoje (se ainda não feito) ou o próximo dia.
+// Sem dia da semana: segue a ordem A → B → C a partir do último treino realizado.
 export function nextWorkout() {
   const ws = state.workouts.filter((w) => !w.archived && w.items.length);
   if (!ws.length) return null;
+  const byDay = ws.filter((w) => w.weekday);
+  if (byDay.length) {
+    const todayN = ((new Date().getDay() + 6) % 7) + 1; // 1 = segunda … 7 = domingo
+    const todayKey = dateKey(new Date());
+    const doneToday = (w) => state.sessions.some((s) => s.workoutId === w.id && dateKey(s.startedAt) === todayKey);
+    const today = byDay.find((w) => w.weekday === todayN && !doneToday(w));
+    if (today) return today;
+    for (let k = 1; k <= 7; k++) {
+      const c = byDay.find((w) => w.weekday === ((todayN - 1 + k) % 7) + 1);
+      if (c) return c;
+    }
+  }
   for (let i = state.sessions.length - 1; i >= 0; i--) {
     const idx = ws.findIndex((w) => w.id === state.sessions[i].workoutId);
     if (idx >= 0) return ws[(idx + 1) % ws.length];

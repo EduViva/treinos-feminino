@@ -1,5 +1,5 @@
 // MODO TREINO — interface de tela cheia, otimizada para uma mão, alto contraste e poucos toques.
-import { h, clear, fmtClock, fmtDur, fmtNum, unlockAudio, beep, vibrate, keepAwake } from '../util.js';
+import { h, clear, fmtClock, fmtDur, fmtNum, unlockAudio, beep, vibrate, keepAwake, isTimed, unitShort, unitLong } from '../util.js';
 import * as store from '../store.js';
 import { app } from '../app.js';
 import { Session, createDraft, PHASE } from '../session.js';
@@ -87,7 +87,15 @@ function tick() {
   if (!S || !ui) return;
   const L = ui.live, ph = S.phase;
   if (L.clock) L.clock.textContent = fmtClock(S.elapsedSec());
-  if (ph === PHASE.RUNNING && L.timer && S.d.cursor.setStartedAt) L.timer.textContent = fmtClock((Date.now() - S.d.cursor.setStartedAt) / 1000);
+  if (ph === PHASE.RUNNING && L.timer && S.d.cursor.setStartedAt) {
+    const el = (Date.now() - S.d.cursor.setStartedAt) / 1000, sx = S.cur;
+    if (isTimed(sx.repUnit)) { // alongamento/prancha/cardio: contagem regressiva até a meta
+      const rem = sx.target.reps * unitFactor(sx.repUnit) - el;
+      L.timer.textContent = rem > 0 ? fmtClock(Math.ceil(rem)) : `+${fmtClock(Math.ceil(-rem))}`;
+      L.timer.classList.toggle('over', rem <= 0);
+      if (rem <= 0 && !ui.setAlerted) { ui.setAlerted = true; alertSimple(); }
+    } else L.timer.textContent = fmtClock(el);
+  }
   if (ph === PHASE.REST && S.d.cursor.rest && S.d.cursor.rest.endsAt) {
     const rem = S.restRemainingSec();
     const r = S.d.cursor.rest;
@@ -107,6 +115,13 @@ function tick() {
   if (ph === PHASE.REST && L.restElapsed && S.d.cursor.rest && !S.d.cursor.rest.endsAt) L.restElapsed.textContent = '';
 }
 
+const unitFactor = (u) => (u === 'min' ? 60 : 1);
+function alertSimple() {
+  const el = ui.root.querySelector('.sess');
+  if (el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+  if (settings().sound) beep(3);
+  if (settings().vibration) vibrate([220, 110, 220, 110, 420]);
+}
 function alertRestEnd() {
   S.markRestAlerted();
   const el = ui.root.querySelector('.sess');
@@ -188,7 +203,7 @@ function setCells(sx, { editable = true } = {}) {
   const open = () => adjustSheet();
   return h('div', { class: 's-set' },
     cell(t.load ? fmtNum(t.load, 1) : sx.bodyweight ? 'Corpo' : '—', t.load ? 'kg' : sx.bodyweight ? 'peso' : 'definir carga', t.load !== p.load, open),
-    cell(repUnitText(ex, t.reps), sx.repUnit === 'seg' ? 'segundos' : 'repetições', t.reps !== p.reps, open),
+    cell(repUnitText(ex, t.reps), isTimed(sx.repUnit) ? unitLong(sx.repUnit) : 'repetições', t.reps !== p.reps, open),
     cell(restText(t.rest), 'descanso', t.rest !== p.rest, open));
 }
 function infoPills(sx) {
@@ -207,7 +222,7 @@ function vIntro() {
   const showSug = sugRes && sugRes.status === 'suggest' && !sugRes.decided;
   const body = [
     h('div', null, h('div', { class: 's-title' }, sx.name),
-      h('div', { class: 's-sub' }, `${sx.target.sets} séries × ${repUnitText(ex, sx.target.reps)}${sx.repUnit === 'seg' ? '' : ' repetições'}`,
+      h('div', { class: 's-sub' }, `${sx.target.sets} séries × ${repUnitText(ex, sx.target.reps)}${isTimed(sx.repUnit) ? '' : ' repetições'}`,
         showSug ? h('span', { class: 'badge', style: { marginLeft: '8px' } }, 'sugestão de progressão') : null)),
     visual(sx, { big: true, phaseText: true }),
     setCells(sx),
@@ -260,6 +275,7 @@ async function endEx() {
 
 // ------------------------------------------------------------------ RUNNING
 function vRunning() {
+  ui.setAlerted = false;
   const sx = S.cur, ex = exFor(sx);
   const n = S.nextSetIndex + 1;
   const timer = h('div', { class: 'timer-big num', 'aria-live': 'off' }, '00:00');
@@ -267,14 +283,19 @@ function vRunning() {
   const body = [
     h('div', null, h('div', { class: 's-title' }, sx.name), h('div', { class: 's-sub' }, `Série ${n} de ${sx.target.sets} · em andamento`)),
     visual(sx),
-    h('div', { class: 'timer-wrap' }, h('div', { class: 'timer-label', style: { color: 'var(--s-go)' } }, 'SÉRIE'), timer),
+    h('div', { class: 'timer-wrap' }, h('div', { class: 'timer-label', style: { color: 'var(--s-go)' } }, isTimed(sx.repUnit) ? 'TEMPO RESTANTE' : 'SÉRIE'), timer),
     h('div', { class: 's-set' },
       h('div', { class: 'cell' }, h('b', null, sx.target.load ? fmtNum(sx.target.load, 1) : sx.bodyweight ? 'Corpo' : '—'), h('span', null, sx.target.load ? 'kg' : sx.bodyweight ? 'peso' : 'sem carga')),
-      h('div', { class: 'cell' }, h('b', null, repUnitText(ex, sx.target.reps)), h('span', null, sx.repUnit === 'seg' ? 'segundos' : 'repetições')),
+      h('div', { class: 'cell' }, h('b', null, repUnitText(ex, sx.target.reps)), h('span', null, isTimed(sx.repUnit) ? unitLong(sx.repUnit) : 'repetições')),
       h('div', { class: 'cell' }, h('b', null, `${n}/${sx.target.sets}`), h('span', null, 'série'))),
   ];
   const bottom = [
-    bigBtn('Terminei', 'go', () => { S.finishSet(); ui.expandResult = false; render(); }, 'check'),
+    bigBtn('Terminei', 'go', () => {
+      // exercício cronometrado: registra o tempo REAL feito (não o planejado)
+      const el = (Date.now() - (S.d.cursor.setStartedAt || Date.now())) / 1000;
+      S.finishSet(isTimed(sx.repUnit) ? { reps: Math.max(1, Math.round(el / unitFactor(sx.repUnit))) } : undefined);
+      ui.expandResult = false; render();
+    }, 'check'),
     bigBtn('Cancelar início', 'sec', () => { S.d.cursor.phase = PHASE.READY; S.d.cursor.setStartedAt = null; S._save(); render(); }),
   ];
   return { body, bottom };
@@ -341,7 +362,7 @@ function resultCard(sx, ex, set, expanded) {
     const sReps = stepper({ value: set.reps, min: 0, max: 300, decimals: 0, big: true, label: 'Repetições', onChange: (v) => { S.editLastSet({ reps: v }); } });
     const sLoad = stepper({ value: set.load, min: 0, max: 999, step: ex.defaults?.loadStep && ex.defaults.loadStep <= 2.5 ? ex.defaults.loadStep : 1, unit: 'kg', big: true, label: 'Carga', onChange: (v) => { S.editLastSet({ load: v }); } });
     card.appendChild(h('div', { style: { display: 'grid', gap: '10px', marginTop: '12px' } },
-      h('div', null, h('div', { class: 's-sub', style: { margin: '0 0 6px' } }, sx.repUnit === 'seg' ? 'Segundos realizados' : 'Repetições realizadas'), sReps),
+      h('div', null, h('div', { class: 's-sub', style: { margin: '0 0 6px' } }, isTimed(sx.repUnit) ? (unitLong(sx.repUnit)[0].toUpperCase() + unitLong(sx.repUnit).slice(1) + ' realizados') : 'Repetições realizadas'), sReps),
       h('div', null, h('div', { class: 's-sub', style: { margin: '0 0 6px' } }, 'Carga usada'), sLoad)));
     card.appendChild(h('div', { style: { marginTop: '14px' } },
       h('div', { class: 's-sub', style: { margin: '0 0 6px' } }, 'Como foi? (opcional)'),
@@ -382,7 +403,7 @@ function adjustSheet() {
   const s = openSheet({
     title: `Ajustar — ${sx.name}`, className: 'tall dark',
     body: [
-      h('div', { class: 'two', style: { marginBottom: '6px' } }, h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Carga'), sLoad), h('div', { class: 'field' }, h('span', { class: 'field-label' }, sx.repUnit === 'seg' ? 'Segundos' : 'Repetições'), sReps)),
+      h('div', { class: 'two', style: { marginBottom: '6px' } }, h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Carga'), sLoad), h('div', { class: 'field' }, h('span', { class: 'field-label' }, isTimed(sx.repUnit) ? (unitLong(sx.repUnit)[0].toUpperCase() + unitLong(sx.repUnit).slice(1)) : 'Repetições'), sReps)),
       h('div', { class: 'two' }, h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Séries'), sSets), h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Descanso'), sRest)),
       h('p', { class: 'muted', style: { fontSize: '13px' } }, `Planejado: ${t.load === sx.planned.load ? '' : ''}${sx.planned.sets}× ${repUnitText(ex, sx.planned.reps)} · ${loadText(ex, sx.planned.load)} · ${restText(sx.planned.rest)}. O que for realizado hoje fica registrado separadamente do plano.`),
     ],

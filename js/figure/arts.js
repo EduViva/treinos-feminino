@@ -3,18 +3,18 @@
 import { dir, add, sub, mul, lerp2, angleOf, sideNormal, circle } from './rig.js';
 import { C, rrect, bar, rod, pulley, plate, dbHead, dumbbellH, stack, pad, seat } from './kit.js';
 
-const mirrorA = (a) => 180 - a;
+export const mirrorA = (a) => 180 - a;
 
 // helpers de pose frontal
-function fpose({ hip, tilt = 0, legK = 1, arms, legs, hipW }) { return { hip, tilt, legK, arms, legs, hipW }; }
-const fArmsFK = (l, r) => ({ l: { ua: l[0], fa: l[1] }, r: { ua: r ? r[0] : mirrorA(l[0]), fa: r ? r[1] : mirrorA(l[1]) } });
-const fLegsFK = (l, r) => ({ l: { th: l[0], sh: l[1] }, r: { th: r ? r[0] : mirrorA(l[0]), sh: r ? r[1] : mirrorA(l[1]) } });
+export function fpose({ hip, tilt = 0, legK = 1, arms, legs, hipW }) { return { hip, tilt, legK, arms, legs, hipW }; }
+export const fArmsFK = (l, r) => ({ l: { ua: l[0], fa: l[1] }, r: { ua: r ? r[0] : mirrorA(l[0]), fa: r ? r[1] : mirrorA(l[1]) } });
+export const fLegsFK = (l, r) => ({ l: { th: l[0], sh: l[1] }, r: { th: r ? r[0] : mirrorA(l[0]), sh: r ? r[1] : mirrorA(l[1]) } });
 
 // Encosto + assento visto de frente (aparelhos sentados)
-function seatedFrameFront(hip) {
+export function seatedFrameFront(hip) {
   return rrect([hip[0], hip[1] - 44], 74, 108, 0, 24, C.pad) + rrect([hip[0], hip[1] - 44], 66, 100, 0, 20, C.padDark, 'opacity="0.3"');
 }
-function seatedBaseFront(hip) {
+export function seatedBaseFront(hip) {
   return rrect([hip[0], hip[1] + 6], 82, 16, 0, 7, C.pad) + bar([hip[0], hip[1] + 12], [hip[0], 262], 14, C.frameDark) + bar([hip[0] - 62, 265], [hip[0] + 62, 265], 9, C.frame);
 }
 
@@ -389,7 +389,7 @@ export const ARTS = {};
 }
 
 // Músculos e dicas padrão para exercícios personalizados que reutilizam uma animação
-export const ART_KEYS = Object.keys(ARTS);
+export const artKeys = () => Object.keys(ARTS);
 export const artLabel = (k) => ARTS[k]?.label || k;
 
 const VB = {

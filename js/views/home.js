@@ -37,7 +37,7 @@ export function homeView() {
     const exs = next.items.map((i) => store.getExercise(i.exerciseId)).filter(Boolean);
     const others = st.workouts.filter((w) => !w.archived && w.items.length && w.id !== next.id);
     root.appendChild(h('div', { class: 'next-card' },
-      h('div', { class: 'eyebrow' }, 'PRÓXIMO TREINO'),
+      h('div', { class: 'eyebrow' }, next.weekday && next.weekday === ((new Date().getDay() + 6) % 7) + 1 ? 'TREINO DE HOJE' : 'PRÓXIMO TREINO'),
       h('h2', null, next.name),
       h('p', null, [next.description, `${next.items.length} exercícios`].filter(Boolean).join(' · ')),
       h('div', { class: 'thumbs' }, exs.slice(0, 5).map((e) => exThumb(e)), exs.length > 5 ? h('div', { class: 'more' }, `+${exs.length - 5}`) : null),

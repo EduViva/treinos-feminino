@@ -1,5 +1,5 @@
 // Agregações puras sobre o histórico (sem acesso a DOM nem banco).
-import { sum, startOfDay, startOfWeek, addDays, dateKey } from './util.js';
+import { sum, startOfDay, startOfWeek, addDays, dateKey, isTimed, unitShort, unitLong } from './util.js';
 
 export const PERIODS = [
   { id: '7d', label: '7 dias', days: 7 },
@@ -22,14 +22,14 @@ export const inRange = (ts, r) => ts >= r.from && ts <= r.to;
 export function exerciseDone(ex) { return ex.status !== 'skipped' && ex.sets && ex.sets.length > 0; }
 
 export function setVolume(set, ex) {
-  if (ex && ex.repUnit === 'seg') return 0;
+  if (ex && isTimed(ex.repUnit)) return 0;
   return (set.load || 0) * (set.reps || 0);
 }
 
 export function sessionTotals(s) {
   const done = s.exercises.filter(exerciseDone);
   const sets = sum(done, (e) => e.sets.length);
-  const reps = sum(done, (e) => (e.repUnit === 'seg' ? 0 : sum(e.sets, (x) => x.reps)));
+  const reps = sum(done, (e) => (isTimed(e.repUnit) ? 0 : sum(e.sets, (x) => x.reps)));
   const volume = sum(done, (e) => sum(e.sets, (x) => setVolume(x, e)));
   const rest = sum(done, (e) => sum(e.sets, (x) => x.restActual));
   const duration = s.durationSec != null ? s.durationSec : Math.max(0, ((s.endedAt || s.startedAt) - s.startedAt) / 1000);

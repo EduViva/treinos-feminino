@@ -1,5 +1,5 @@
 // Lista de treinos, editor de treino (itens, ordem, substituição) e importação de lista de texto.
-import { h, clear, fmtNum, norm, uid, groupBy } from '../util.js';
+import { h, clear, fmtNum, norm, uid, groupBy, isTimed, unitShort, unitLong } from '../util.js';
 import * as store from '../store.js';
 import { app } from '../app.js';
 import {
@@ -151,7 +151,7 @@ export function workoutEditorView([id]) {
     const s = openSheet({
       title: ex?.name || 'Exercício', className: 'tall',
       body: [
-        h('div', { class: 'two' }, field('Séries', sSets), field(ex?.repUnit === 'seg' ? 'Tempo (s)' : 'Repetições', sReps)),
+        h('div', { class: 'two' }, field('Séries', sSets), field(isTimed(ex?.repUnit) ? `Tempo (${unitShort(ex.repUnit)})` : 'Repetições', sReps)),
         h('div', { class: 'two' }, field('Carga', sLoad, ex?.bodyweight ? 'Peso corporal: deixe 0.' : null), field('Descanso', sRest)),
         field('Observações', notes),
         h('p', { class: 'muted', style: { fontSize: '13px' } }, 'Alterar aqui muda o padrão deste treino daqui para frente. O histórico já realizado não é alterado.'),

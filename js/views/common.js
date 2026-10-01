@@ -1,5 +1,5 @@
 // Helpers compartilhados entre telas.
-import { h, fmtNum, fmtDur, fmtDate, fmtTime, sum } from '../util.js';
+import { h, fmtNum, fmtDur, fmtDate, fmtTime, sum, isTimed, unitShort, unitLong } from '../util.js';
 import * as store from '../store.js';
 import { segmented } from '../ui.js';
 import { app } from '../app.js';
@@ -10,7 +10,7 @@ export function loadText(ex, load) {
   if (!load) return ex && ex.bodyweight ? 'Peso corporal' : 'A definir';
   return `${fmtNum(load, 1)} kg`;
 }
-export const repUnitText = (ex, n) => (ex && ex.repUnit === 'seg' ? `${n} s` : `${n}`);
+export const repUnitText = (ex, n) => (ex && isTimed(ex.repUnit) ? `${n} ${unitShort(ex.repUnit)}` : `${n}`);
 export function setsRepsText(ex, p) {
   return `${p.sets} × ${repUnitText(ex, p.reps)}`;
 }
@@ -46,9 +46,10 @@ export function lastTimeNode(exerciseId, ex) {
 
 // "22 kg × 10", "12 reps" (sem carga) ou "30 s" (exercício em tempo)
 export function fmtSet(ex, s) {
-  const unitSeg = ex && ex.repUnit === 'seg';
-  if (s.load) return `${fmtNum(s.load, 1)} kg × ${unitSeg ? s.reps + ' s' : s.reps}`;
-  return unitSeg ? `${s.reps} s` : `${s.reps} reps`;
+  const unitSeg = ex && isTimed(ex.repUnit);
+  const u = unitShort(ex && ex.repUnit);
+  if (s.load) return `${fmtNum(s.load, 1)} kg × ${unitSeg ? s.reps + ' ' + u : s.reps}`;
+  return unitSeg ? `${s.reps} ${u}` : `${s.reps} reps`;
 }
 export const setLineText = fmtSet;
 export function setExtras(s) {

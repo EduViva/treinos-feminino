@@ -2,6 +2,8 @@
 import { poseAt, renderSide, renderFront, solveSide, solveFront } from './rig.js';
 import { floor, C } from './kit.js';
 import { ARTS } from './arts.js';
+import './arts2.js';
+import './arts3.js';
 
 const f = (n) => Math.round(n * 10) / 10;
 export const hasArt = (k) => !!ARTS[k];

@@ -44,6 +44,10 @@ export function uid() {
   return 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
+// Exercícios medidos em tempo: 'seg' (alongamento/prancha) e 'min' (esteira/escada)
+export const isTimed = (u) => u === 'seg' || u === 'min';
+export const unitShort = (u) => (u === 'min' ? 'min' : 's');
+export const unitLong = (u) => (u === 'min' ? 'minutos' : 'segundos');
 export const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 export const round1 = (v) => Math.round(v * 10) / 10;
 export const roundTo = (v, step) => Math.round(v / step) * step;
