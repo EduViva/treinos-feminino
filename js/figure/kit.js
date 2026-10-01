@@ -44,8 +44,8 @@ export function stack(cx, top, w, h, lift = 0) {
 }
 
 export function floor() {
-  return `<rect width="400" height="300" fill="${C.bg1}"/><ellipse cx="200" cy="306" rx="260" ry="52" fill="${C.bg2}"/>` +
-    `<rect y="268" width="400" height="32" fill="${C.floor}"/><rect y="268" width="400" height="2" fill="#D8D1EA"/>`;
+  return `<rect x="-800" y="-800" width="2000" height="2200" fill="${C.bg1}"/><ellipse cx="200" cy="306" rx="300" ry="52" fill="${C.bg2}"/>` +
+    `<rect x="-800" y="268" width="2000" height="600" fill="${C.floor}"/><rect x="-800" y="268" width="2000" height="2" fill="#D8D1EA"/>`;
 }
 
 export function pad(c, w, h, rot, r = 7) {

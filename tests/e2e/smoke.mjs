@@ -1,0 +1,15 @@
+import { chromium } from './pw.mjs';
+import { start } from '../../scripts/serve.mjs';
+const OUT = process.argv[2] || 'tests/e2e/out';
+const server = await start(8124);
+const b = await chromium.launch();
+const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'pt-BR' });
+const p = await ctx.newPage();
+const errs = [];
+p.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+p.on('console', (m) => { if (m.type() === 'error') errs.push('CONSOLE ' + m.text()); });
+await p.goto('http://localhost:8124/');
+await p.waitForSelector('.hero', { timeout: 5000 }).catch(() => {});
+await p.screenshot({ path: `${OUT}/01-onboarding.png`, fullPage: true });
+console.log(errs.length ? errs.join('\n') : 'no errors');
+await b.close(); server.close();

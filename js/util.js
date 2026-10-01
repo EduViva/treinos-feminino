@@ -109,6 +109,7 @@ export function fmtClock(sec) {
 // "1h12" / "48 min" / "35 s" para resumos
 export function fmtDur(sec) {
   sec = Math.max(0, Math.round(sec || 0));
+  if (sec === 0) return '0 min';
   if (sec < 60) return `${sec} s`;
   const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
   if (h > 0) return `${h}h${pad(m === 60 ? 59 : m)}`;

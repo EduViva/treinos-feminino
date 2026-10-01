@@ -179,14 +179,14 @@ export const SEED_WORKOUTS = [
 ];
 
 export const ACTIVITY_TYPES = [
-  { id: 'corrida', label: 'Corrida', color: '#E8590C', fields: ['duration', 'distance', 'pace', 'intensity', 'calories'] },
-  { id: 'caminhada', label: 'Caminhada', color: '#2F9E44', fields: ['duration', 'distance', 'pace', 'intensity', 'calories'] },
-  { id: 'bike', label: 'Bike', color: '#1C7ED6', fields: ['duration', 'distance', 'speed', 'intensity', 'calories'] },
-  { id: 'volei', label: 'Vôlei', color: '#F59F00', fields: ['duration', 'intensity', 'calories'] },
-  { id: 'pingpong', label: 'Ping-pong', color: '#D6336C', fields: ['duration', 'intensity', 'calories'] },
-  { id: 'outro', label: 'Outros', color: '#868E96', fields: ['duration', 'distance', 'intensity', 'calories'] },
+  { id: 'corrida', label: 'Corrida', color: 'var(--c-corrida)', fields: ['duration', 'distance', 'pace', 'intensity', 'calories'] },
+  { id: 'caminhada', label: 'Caminhada', color: 'var(--c-caminhada)', fields: ['duration', 'distance', 'pace', 'intensity', 'calories'] },
+  { id: 'bike', label: 'Bike', color: 'var(--c-bike)', fields: ['duration', 'distance', 'speed', 'intensity', 'calories'] },
+  { id: 'volei', label: 'Vôlei', color: 'var(--c-volei)', fields: ['duration', 'intensity', 'calories'] },
+  { id: 'pingpong', label: 'Ping-pong', color: 'var(--c-pingpong)', fields: ['duration', 'intensity', 'calories'] },
+  { id: 'outro', label: 'Outros', color: 'var(--c-outro)', fields: ['duration', 'distance', 'intensity', 'calories'] },
 ];
-export const MUSCULACAO = { id: 'musculacao', label: 'Musculação', color: '#6D4BD8' };
+export const MUSCULACAO = { id: 'musculacao', label: 'Musculação', color: 'var(--c-musculacao)' };
 export const CATEGORIES = [MUSCULACAO, ...ACTIVITY_TYPES];
 export const catById = (id) => CATEGORIES.find((c) => c.id === id) || ACTIVITY_TYPES[ACTIVITY_TYPES.length - 1];
 
