@@ -94,7 +94,7 @@ function applyTheme() {
   if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; else if (!window.claude) delete document.documentElement.dataset.theme;
   const dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const m = document.querySelector('meta[name=theme-color]');
-  if (m) m.content = dark ? '#0E0C18' : '#6D4BD8';
+  if (m) m.content = dark ? '#0E0E0F' : '#F4F3F1';
 }
 app.applyTheme = applyTheme;
 

@@ -2,9 +2,9 @@
 import { P, dir, add, sub, mul, circle } from './rig.js';
 
 export const C = {
-  frame: '#2F5E9E', frameDark: '#234A80', pad: '#8FB2D8', padDark: '#6C93C3', panel: '#E9EEF5',
-  steel: '#C4CBD6', steelDark: '#98A1AF', black: '#3A3E4B', bench: '#5C6B88', mat: '#B8E3DC',
-  cable: '#4A4F5E', floor: '#E7E2F3', bg1: '#F7F5FC', bg2: '#ECE7F8', accent: '#FF4D5E',
+  frame: '#3A3D44', frameDark: '#272A30', pad: '#CDD0D6', padDark: '#A4A9B2', panel: '#ECEBE8',
+  steel: '#CBCED3', steelDark: '#9A9EA6', black: '#2B2D33', bench: '#5E626B', mat: '#EBD6C8',
+  cable: '#4A4D55', floor: '#E5E1DA', bg1: '#F3F1ED', bg2: '#EAE7E1', accent: '#FF6B2C',
 };
 const f = (n) => Math.round(n * 10) / 10;
 
@@ -19,7 +19,7 @@ export function rod(p, q, w, color = C.cable) {
 }
 export const pulley = (c, r = 6) => circle(c, r, C.steelDark) + circle(c, r * 0.45, C.black);
 export const plate = (c, r) => circle(c, r, C.black) + circle(c, r * 0.72, '#555B6C') + circle(c, r * 0.22, C.steel);
-export const dbHead = (c, r = 7) => circle(c, r, '#454B5E', 'stroke="#fff" stroke-width="1.6"') + circle(c, r * 0.5, '#9AA3B6');
+export const dbHead = (c, r = 7) => circle(c, r, '#3A3D44', 'stroke="#fff" stroke-width="1.6"') + circle(c, r * 0.5, '#A4A9B2');
 
 // Peso (halter) visto "de topo": barra horizontal com duas cabeças.
 export function dumbbellH(c, len = 26, r = 6.5) {
@@ -45,7 +45,7 @@ export function stack(cx, top, w, h, lift = 0) {
 
 export function floor() {
   return `<rect x="-800" y="-800" width="2000" height="2200" fill="${C.bg1}"/><ellipse cx="200" cy="306" rx="300" ry="52" fill="${C.bg2}"/>` +
-    `<rect x="-800" y="268" width="2000" height="600" fill="${C.floor}"/><rect x="-800" y="268" width="2000" height="2" fill="#D8D1EA"/>`;
+    `<rect x="-800" y="268" width="2000" height="600" fill="${C.floor}"/><rect x="-800" y="268" width="2000" height="2" fill="#D2CDC4"/>`;
 }
 
 export function pad(c, w, h, rot, r = 7) {

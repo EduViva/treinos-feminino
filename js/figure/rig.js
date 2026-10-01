@@ -18,9 +18,9 @@ export const P = (p) => `${f(p[0])} ${f(p[1])}`;
 
 export const PAL = {
   skin: '#F2C7A5', skinFar: '#DDAA84', hair: '#3A2622', hairFar: '#2B1B18',
-  top: '#7C5CE0', topFar: '#6446C4', band: '#5FD1C0',
-  legs: '#3C4157', legsFar: '#2C3045', shoe: '#F7F7FB', shoeFar: '#D9DAE6', sole: '#5FD1C0',
-  hi1: '#FF4D5E', hi2: '#FFA23E',
+  top: '#959BA5', topFar: '#7C828C', band: '#FF6B2C',
+  legs: '#26282E', legsFar: '#1B1D22', shoe: '#F8F6F2', shoeFar: '#DCD8D1', sole: '#FF6B2C',
+  hi1: '#FF6B2C', hi2: '#FFB23E',
 };
 
 export const LEN = { torso: 50, neck: 5, headR: 11, ua: 27, fa: 25, hand: 6, th: 46, sh: 44, ft: 19 };
@@ -79,7 +79,7 @@ export function poseAt(keys, t) {
 // ---------- destaque dos músculos ----------
 function hl(level, shape) { // level: 1 principal, 2 secundário
   const c = level === 1 ? PAL.hi1 : PAL.hi2;
-  return shape.replace('fill="HL"', `fill="${c}" opacity="${level === 1 ? 0.5 : 0.32}"`);
+  return shape.replace('fill="HL"', `fill="${c}" opacity="${level === 1 ? 0.72 : 0.52}"`);
 }
 function levelOf(m, name) {
   if (!m) return 0;

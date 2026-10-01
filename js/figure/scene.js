@@ -32,9 +32,9 @@ function trajectory(key, art) {
     for (let k = pts.length - 2; k >= 0; k--) { b = pts[k]; if (Math.hypot(a[0] - b[0], a[1] - b[1]) > 7) break; }
     const ang = Math.atan2(a[1] - b[1], a[0] - b[0]) * 180 / Math.PI;
     svg += `<path d="${d}" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.8"/>`;
-    svg += `<path d="${d}" fill="none" stroke="#5B3FD0" stroke-width="2.4" stroke-dasharray="1 5.5" stroke-linecap="round" stroke-linejoin="round"/>`;
-    svg += `<g transform="translate(${f(a[0])} ${f(a[1])}) rotate(${f(ang)})"><path d="M-9 -7L5 0L-9 7Z" fill="#5B3FD0" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></g>`;
-    svg += `<circle cx="${f(pts[0][0])}" cy="${f(pts[0][1])}" r="4.2" fill="#fff" stroke="#5B3FD0" stroke-width="2.2"/>`;
+    svg += `<path d="${d}" fill="none" stroke="#1F2024" stroke-width="2.4" stroke-dasharray="1 5.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+    svg += `<g transform="translate(${f(a[0])} ${f(a[1])}) rotate(${f(ang)})"><path d="M-9 -7L5 0L-9 7Z" fill="#1F2024" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></g>`;
+    svg += `<circle cx="${f(pts[0][0])}" cy="${f(pts[0][1])}" r="4.2" fill="#fff" stroke="#1F2024" stroke-width="2.2"/>`;
   }
   trajCache.set(key, svg);
   return svg;
