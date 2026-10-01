@@ -9,7 +9,7 @@ const W = Number(process.argv[3] || 390);
 mkdirSync(OUT, { recursive: true });
 const server = await start(8128);
 const b = await chromium.launch();
-const ctx = await b.newContext({ viewport: { width: W, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'pt-BR' });
+const ctx = await b.newContext({ colorScheme: process.env.SCHEME || 'light', viewport: { width: W, height: 800 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'pt-BR' });
 const p = await ctx.newPage();
 const errs = [];
 p.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
