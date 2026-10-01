@@ -57,6 +57,7 @@ export async function init() {
   }
   for (const list of state.media.values()) list.sort((a, b) => a.createdAt - b.createdAt);
   await migrate();
+  await migrateArt();
   state.ready = true;
   try {
     if (navigator.storage && navigator.storage.persist) {
@@ -88,6 +89,24 @@ async function migrate() {
   for (const w of [...state.workouts]) if (w.example) await deleteWorkout(w.id);
   if (state.profile && !state.workouts.some((w) => !w.archived)) await loadSeedWorkouts();
   await setMeta({ libVersion: 2 });
+}
+
+// v3: animações dedicadas (pegada, aparelho e posição fiéis ao exercício). Só troca a arte de exercícios
+// padrão que ainda usam a animação aproximada anterior; personalizações da usuária são preservadas.
+const ART_V3 = {
+  'ex-puxada-supinada': ['lat_pulldown', 'lat_pulldown_supine'], 'ex-serrote-maq': ['seated_row', 'one_arm_row'],
+  'ex-rosca-w': ['biceps_curl', 'ez_curl'], 'ex-desenv-maq': ['shoulder_press', 'shoulder_press_machine'],
+  'ex-afundo-step': ['lunge', 'step_lunge'], 'ex-afundo-smith': ['lunge', 'smith_lunge'],
+  'ex-supino-inclinado': ['chest_press', 'incline_press'], 'ex-mob-agach-profundo': ['squat', 'deep_squat'],
+  'ex-triceps-corda': ['triceps_pushdown', 'triceps_rope'],
+};
+async function migrateArt() {
+  if ((state.meta.libVersion || 0) >= 3) return;
+  for (const [id, [from, to]] of Object.entries(ART_V3)) {
+    const e = state.exercises.get(id);
+    if (e && e.art === from) { const n = { ...e, art: to, updatedAt: now() }; await db.put('exercises', n); state.exercises.set(id, n); }
+  }
+  await setMeta({ libVersion: 3 });
 }
 
 export const clone = (o) => (o == null ? o : JSON.parse(JSON.stringify(o)));

@@ -230,7 +230,7 @@ const mig = await ev(async () => {
 });
 ok(!mig.stiff, 'exercício antigo sem histórico foi excluído');
 ok(mig.pant && mig.pant.archived === true && mig.sess === 1, 'exercício antigo COM histórico foi arquivado (histórico intacto)');
-ok(mig.ex === 50 + 1 && mig.ver === 2, `biblioteca nova instalada (${mig.ex} itens incl. 1 arquivado)`);
+ok(mig.ex === 50 + 1 && mig.ver === 3, `biblioteca nova instalada (${mig.ex} itens incl. 1 arquivado)`);
 ok(JSON.stringify(mig.wks) === JSON.stringify(['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta']), 'treino de exemplo removido; Segunda–Sexta criados');
 ok(['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'].includes(await page.locator('.next-card h2').innerText()), 'início mostra o treino da semana');
 const firstItems = await ev(async () => { const s = await import('/js/store.js'); return s.state.workouts[0].items.slice(0, 4).map((i) => s.getExercise(i.exerciseId).kind); });

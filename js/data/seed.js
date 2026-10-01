@@ -82,7 +82,7 @@ export const SEED_EXERCISES = [
   ex('ex-mob-balanco-perna', 'Balanço de perna', 'Glúteos', ['Posteriores', 'Quadríceps'], 'Peso corporal', 'mob_leg_swing', [
     'Em pé, uma mão apoiada na parede.', 'Balance a perna estendida para frente e para trás.', 'Aumente a amplitude aos poucos; tronco firme; troque de perna.',
   ], MOB),
-  ex('ex-mob-agach-profundo', 'Agachamento profundo (mobilidade)', 'Quadríceps', ['Glúteos', 'Adutores'], 'Peso corporal', 'squat', [
+  ex('ex-mob-agach-profundo', 'Agachamento profundo (mobilidade)', 'Quadríceps', ['Glúteos', 'Adutores'], 'Peso corporal', 'deep_squat', [
     'Pés um pouco mais afastados que os ombros.', 'Desça o quadril o máximo que a postura permitir, cotovelos empurrando os joelhos para fora.', 'Suba empurrando o chão.',
   ], MOB),
 
@@ -90,10 +90,10 @@ export const SEED_EXERCISES = [
   M('ex-voador-invertido', 'Voador invertido', 'Costas', ['Ombros', 'Tríceps'], 'reverse_fly', [
     'Peito apoiado no encosto, braços à frente.', 'Abra os braços para trás levando os cotovelos para fora.', 'Aperte as escápulas e volte devagar.',
   ], { defaults: { loadStep: 5 } }),
-  M('ex-puxada-supinada', 'Puxada fechada pegada supinada', 'Costas', ['Bíceps', 'Ombros'], 'lat_pulldown', [
+  M('ex-puxada-supinada', 'Puxada fechada pegada supinada', 'Costas', ['Bíceps', 'Ombros'], 'lat_pulldown_supine', [
     'Pegada fechada com as palmas voltadas para você.', 'Puxe a barra até o peito levando os cotovelos para baixo.', 'Aperte as escápulas e volte devagar.',
   ], { eq: 'Polia / cabo', defaults: { loadStep: 5 } }),
-  M('ex-serrote-maq', 'Serrote na máquina', 'Costas', ['Bíceps', 'Ombros'], 'seated_row', [
+  M('ex-serrote-maq', 'Serrote na máquina', 'Costas', ['Bíceps', 'Ombros'], 'one_arm_row', [
     'Peito apoiado, um braço de cada vez.', 'Puxe o cotovelo para trás rente ao corpo.', 'Aperte a escápula e volte devagar.',
   ], { defaults: { loadStep: 5 } }),
   M('ex-face-pull', 'Face pull com corda', 'Ombros', ['Costas', 'Bíceps'], 'face_pull', [
@@ -102,10 +102,10 @@ export const SEED_EXERCISES = [
   M('ex-remada-alta', 'Remada alta na polia', 'Ombros', ['Costas', 'Bíceps'], 'upright_row', [
     'Em pé, barra à frente das coxas.', 'Suba a barra rente ao corpo, cotovelos para cima.', 'Até a altura dos ombros, sem encolher o pescoço; desça devagar.',
   ], { eq: 'Polia / cabo', defaults: { loadStep: 2.5 } }),
-  M('ex-rosca-w', 'Rosca direta com barra W', 'Bíceps', [], 'biceps_curl', [
+  M('ex-rosca-w', 'Rosca direta com barra W', 'Bíceps', [], 'ez_curl', [
     'Em pé, barra W com pegada na largura dos ombros.', 'Flexione os cotovelos levando a barra aos ombros, sem balançar.', 'Desça devagar até estender os braços.',
   ], { eq: 'Barra', defaults: { loadStep: 2 } }),
-  M('ex-desenv-maq', 'Desenvolvimento na máquina', 'Ombros', ['Tríceps'], 'shoulder_press', [
+  M('ex-desenv-maq', 'Desenvolvimento na máquina', 'Ombros', ['Tríceps'], 'shoulder_press_machine', [
     'Costas apoiadas, pegadas na altura dos ombros.', 'Empurre para cima até quase estender os cotovelos.', 'Desça devagar até a altura das orelhas.',
   ], { defaults: { loadStep: 5 } }),
   ex('ex-esteira', 'Esteira', 'Corpo inteiro', ['Quadríceps', 'Panturrilhas'], 'Cardio', 'treadmill', [
@@ -113,7 +113,7 @@ export const SEED_EXERCISES = [
   ], { kind: 'cardio', repUnit: 'min', bodyweight: true, defaults: { sets: 1, reps: 20, rest: 0 } }),
 
   // ---------------- Terça: glúteo e posterior ----------------
-  M('ex-afundo-step', 'Afundo com pé da frente no step', 'Quadríceps', ['Glúteos', 'Posteriores'], 'lunge', [
+  M('ex-afundo-step', 'Afundo com pé da frente no step', 'Quadríceps', ['Glúteos', 'Posteriores'], 'step_lunge', [
     'Pé da frente apoiado no step, tronco ereto.', 'Desça até o joelho de trás se aproximar do chão.', 'Empurre o step com o pé da frente para subir.',
   ], { eq: 'Halteres', defaults: { loadStep: 1 } }),
   M('ex-ext-quadril-polia', 'Extensão de quadril na polia', 'Glúteos', ['Posteriores'], 'cable_kickback', [
@@ -136,10 +136,10 @@ export const SEED_EXERCISES = [
   M('ex-supino-reto', 'Supino reto com barra', 'Peito', ['Ombros', 'Tríceps'], 'bench_press', [
     'Deitada no banco, pés firmes no chão.', 'Empurre a barra até estender os braços.', 'Desça devagar até tocar de leve o peito.',
   ], { eq: 'Barra', defaults: { sets: 4, reps: 10, loadStep: 2.5 } }),
-  M('ex-supino-inclinado', 'Supino inclinado articulado', 'Peito', ['Ombros', 'Tríceps'], 'chest_press', [
+  M('ex-supino-inclinado', 'Supino inclinado articulado', 'Peito', ['Ombros', 'Tríceps'], 'incline_press', [
     'Banco inclinado, costas apoiadas.', 'Empurre até quase estender os cotovelos.', 'Volte devagar sentindo o peito alongar.',
   ], { defaults: { loadStep: 5 } }),
-  M('ex-triceps-corda', 'Tríceps com corda na polia', 'Tríceps', [], 'triceps_pushdown', [
+  M('ex-triceps-corda', 'Tríceps com corda na polia', 'Tríceps', [], 'triceps_rope', [
     'Cotovelos junto ao corpo.', 'Estenda os cotovelos abrindo a corda no final.', 'Só os antebraços se movem; volte devagar.',
   ], { eq: 'Polia / cabo', defaults: { loadStep: 2.5 } }),
   M('ex-triceps-frances', 'Tríceps francês unilateral', 'Tríceps', ['Ombros'], 'overhead_triceps', [
@@ -179,7 +179,7 @@ export const SEED_EXERCISES = [
   ex('ex-quatro-apoios', 'Glúteo em quatro apoios', 'Glúteos', ['Posteriores', 'Lombar'], 'Peso corporal', 'quadruped_kickback', [
     'Quatro apoios: mãos sob os ombros, abdômen firme.', 'Eleve uma perna dobrada empurrando o calcanhar para o teto.', 'Coxa na altura do quadril, sem arquear a lombar; volte devagar.',
   ], { eq: 'Peso corporal', bodyweight: false, defaults: { loadStep: 1 } }),
-  M('ex-afundo-smith', 'Afundo no Smith', 'Quadríceps', ['Glúteos', 'Posteriores'], 'lunge', [
+  M('ex-afundo-smith', 'Afundo no Smith', 'Quadríceps', ['Glúteos', 'Posteriores'], 'smith_lunge', [
     'Barra apoiada nos ombros, uma perna à frente.', 'Desça até o joelho da frente formar ~90°.', 'Empurre o chão com o pé da frente para subir.',
   ], { eq: 'Smith', defaults: { loadStep: 5 } }),
   M('ex-extensora', 'Cadeira extensora', 'Quadríceps', [], 'leg_extension', [

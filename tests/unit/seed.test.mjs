@@ -4,6 +4,7 @@ import { SEED_EXERCISES, SEED_WORKOUTS } from '../../js/data/seed.js';
 import { ARTS } from '../../js/figure/arts.js';
 import '../../js/figure/arts2.js';
 import '../../js/figure/arts3.js';
+import '../../js/figure/arts4.js';
 
 const byId = new Map(SEED_EXERCISES.map((e) => [e.id, e]));
 

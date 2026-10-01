@@ -82,7 +82,7 @@ ARTS.stretch_biceps = {
     label: 'Alongamento de glúteo (joelho ao peito)', view: 'side', face: 1, vb: '90 130 240 180', isometric: true, dur: 2.6,
     keys: [
       { ...common, arm: { wrist: [200, 258], bend: 1 }, leg: { th: -72, sh: 72 } },
-      { ...common, arm: { wrist: [186, 226], bend: 1 }, leg: { th: -135, sh: 45 } },
+      { ...common, arm: { wrist: [178, 226], bend: 1 }, leg: { th: -160, sh: -20 } },
     ],
     track: [], muscles: { primary: ['gluteos'], secondary: ['lombar', 'posteriores'] },
     cues: T(['Deitada de barriga para cima, pernas dobradas.', 'Abrace um joelho e traga-o em direção ao peito.', 'Mantenha a lombar no chão; sinta o glúteo alongar.', 'Solte devagar e troque de perna.']),
@@ -95,7 +95,7 @@ ARTS.stretch_fold = {
   label: 'Alongamento de posterior (inclinação de tronco)', view: 'side', face: 1, vb: '70 84 260 195', isometric: true, dur: 2.8,
   keys: [
     { ...base, arm: { ua: 92, fa: 92 }, leg: { ankle: [200, 260], bend: -1 } },
-    { hip: [188, 172], torso: 65, head: 65, arm: { ua: 95, fa: 95 }, leg: { ankle: [200, 260], bend: -1 }, ft: 0 },
+    { hip: [182, 172], torso: 52, head: 55, arm: { ua: 100, fa: 100 }, leg: { ankle: [200, 260], bend: -1 }, ft: 0 },
   ],
   track: ['wrist'], muscles: { primary: ['posteriores'], secondary: ['lombar', 'panturrilhas'] },
   cues: T(['Em pé, pernas estendidas.', 'Incline o tronco para frente, quadril para trás, mãos em direção aos pés.', 'Sinta o alongamento atrás das coxas; sem forçar a lombar.', 'Volte devagar, vértebra por vértebra.']),
@@ -107,7 +107,7 @@ ARTS.stretch_hamstring_step = {
   label: 'Alongamento de posterior (perna no step)', view: 'side', face: 1, vb: '70 84 260 195', isometric: true, dur: 2.8,
   keys: [
     { hip: [200, 172], torso: -90, head: -90, arm: { wrist: [205, 215], bend: -1 }, leg: { ankle: [203, 260], bend: -1 }, farLeg: { ankle: [188, 260], bend: -1 }, ft: 0 },
-    { hip: [186, 172], torso: -35, head: -25, arm: { wrist: [250, 200], bend: -1 }, leg: { ankle: [250, 240], bend: -1 }, farLeg: { ankle: [186, 260], bend: -1 }, ft: -40 },
+    { hip: [186, 172], torso: -35, head: -25, arm: { wrist: [250, 200], bend: -1 }, leg: { ankle: [248, 247], bend: -1 }, farLeg: { ankle: [186, 260], bend: -1 }, ft: -40 },
   ],
   track: [], muscles: { primary: ['posteriores'], secondary: ['panturrilhas'] },
   cues: T(['Em pé, um calcanhar apoiado no step.', 'Incline o tronco com a coluna reta, em direção ao pé apoiado.', 'Sinta atrás da coxa; joelho quase estendido.', 'Volte devagar e troque de perna.']),
