@@ -60,6 +60,8 @@ export function icon(name, size = 22) {
   return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[name] || ''}</svg>`;
 }
 export const ico = (name, size) => h('span', { class: 'ico', html: icon(name, size) });
+// Conjuntos de ícones extras (ex.: js/data/wellbeing.js) entram no mesmo `icon()`.
+export const registerIcons = (set) => { Object.assign(I, set); };
 
 // ---------- Botões ----------
 export function btn(label, opts = {}) {
@@ -198,6 +200,24 @@ export function scale({ options, value, onChange, cls = '', allowClear = true })
   render();
   wrap.get = () => cur;
   wrap.set = (v) => { cur = v; render(); };
+  return wrap;
+}
+
+// Escala de respostas representadas por ÍCONE (+ rótulo curto). Cada botão alterna (toque de novo para limpar),
+// então o grupo usa aria-pressed. Atualiza os botões no lugar (não recria) para o foco não se perder.
+// A cor do painel vem do CSS (.wq[data-hue]); a escolha é marcada por preenchimento + peso, não só por cor.
+export function iconScale({ options, value, onChange, label, labelledBy, allowClear = true }) {
+  const wrap = h('div', { class: `wq-scale n${options.length}`, role: 'group', 'aria-label': label, 'aria-labelledby': labelledBy });
+  let cur = value ?? null;
+  const buttons = options.map((o) => h('button', {
+    type: 'button', class: 'wq-opt', 'aria-pressed': 'false', 'data-v': String(o.v),
+    onClick: () => { cur = (allowClear && cur === o.v) ? null : o.v; paint(); onChange && onChange(cur); },
+  }, h('span', { class: 'wq-ico', html: icon(o.icon, 28) }), h('span', { class: 'wq-lab' }, o.label)));
+  const paint = () => buttons.forEach((b, i) => { const on = cur === options[i].v; b.setAttribute('aria-pressed', String(on)); b.classList.toggle('on', on); });
+  wrap.append(...buttons);
+  paint();
+  wrap.get = () => cur;
+  wrap.set = (v) => { cur = v; paint(); };
   return wrap;
 }
 

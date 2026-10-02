@@ -41,6 +41,7 @@ js/
   search.js                      busca por relevância (sem acento, sinônimos, filtros, favoritos)
   data/taxonomy.js               grupos, equipamentos, tipos, níveis, papéis e permissões (fonte única)
   data/legacy-map.js             GERADO: ids antigos ("ex-…") → ids do catálogo
+  data/wellbeing.js              Bem-estar: perguntas, respostas, ícones SVG (um por resposta) e a cor pastel de cada pergunta
   data/seed.js                   treinos de exemplo e constantes
   session.js · progression.js · stats.js · importer.js · charts.js · ui.js · visual.js
   figure/                        motor de ilustração (rig, kit, arts, scene)
@@ -53,7 +54,7 @@ supabase/
   seed.sql                       GERADO a partir de catalog/ (idempotente)
   tests/rls_multiuser.sql        85 verificações de segurança, rodam numa transação sempre revertida
   config.toml                    configuração do Supabase CLI (opcional)
-tests/unit   (node --test)       progressão, estatísticas, importador, catálogo, seed, busca, mappers, legado
+tests/unit   (node --test)       progressão, estatísticas, importador, catálogo, seed, busca, mappers, legado, Bem-estar (ícones/cores)
 tests/e2e    (Playwright)        fluxos em celular; `fake-supabase.mjs` simula Auth/REST/Storage + RLS
 scripts/                         serve, stamp-sw, make-icons, vendor, build-seed, db-test
 ```
@@ -189,6 +190,11 @@ Peso, altura e sexo **não** entram no cálculo.
 * Animação: início → movimento → fim → retorno (hold 0,75 s + 1,9 s por trecho), câmera lenta 0,5×, pausa, trajetória tracejada com seta, músculos principais (coral) e secundários (âmbar), legenda por fase.
 * `prefers-reduced-motion` abre direto em quadros.
 * Fotos são reduzidas (máx. 1600 px); vídeos entram como estão (aviso acima de 60 MB). Substituir/excluir mídia **não** afeta o histórico.
+
+## 6b. Tela Bem-estar (design)
+Cada pergunta é um painel com a **sua cor pastel** (`css/app.css`, `.wq[data-hue]`: rosa, amarelo, verde, lilás, pêssego, azul e areia, com versão para o tema escuro) e as respostas são **botões com ícone + rótulo**.
+A cor só identifica a *pergunta*; a *resposta* é a forma do ícone (rosto, bateria que enche, olho que fecha, medidor, anel, gotas), e o botão escolhido muda de "claro" para "cheio", então nada depende só da cor.
+O E2E mede o contraste renderizado nos dois temas (rótulo escolhido ≥ 4,5:1, ícones ≥ 3:1, títulos ≥ 4,5:1).
 
 ## 7. Offline
 

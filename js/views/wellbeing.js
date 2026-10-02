@@ -3,16 +3,12 @@
 import { h, clear, dateKey, parseKey, addDays, fmtNum, fmtDate, fmtDateLong, sum, avg, startOfDay, DIAS_SEMANA } from '../util.js';
 import * as store from '../store.js';
 import { app } from '../app.js';
-import { btn, icon, iconBtn, chips, scale, textArea, toast, field, pageHead } from '../ui.js';
+import { btn, icon, iconBtn, chips, iconScale, registerIcons, textArea, toast, pageHead } from '../ui.js';
 import { timeChart } from '../charts.js';
 import { PERIODS, periodRange, inRange, sessionTotals, cycleStarts, cycleDayOn, avgCycleLength } from '../stats.js';
+import { WB_ICONS, WB_SCALES, WB_PERIOD, WB_NOTE } from '../data/wellbeing.js';
 
-const L5 = (a) => a.map((label, i) => ({ v: i + 1, label }));
-const MOOD = L5(['Muito baixo', 'Baixo', 'Neutro', 'Bom', 'Ótimo']);
-const ENERGY = L5(['Muito baixa', 'Baixa', 'Média', 'Alta', 'Muito alta']);
-const TIRED = L5(['Nenhum', 'Leve', 'Moderado', 'Alto', 'Muito alto']);
-const RECOV = L5(['Péssima', 'Ruim', 'Ok', 'Boa', 'Ótima']);
-const FLOW = [{ v: 'leve', label: 'Leve' }, { v: 'médio', label: 'Médio' }, { v: 'intenso', label: 'Intenso' }];
+registerIcons(WB_ICONS);
 
 let cmpMetric = 'energy', cmpPeriod = '30d';
 
@@ -25,41 +21,58 @@ export function wellbeingView() {
   const compareHost = h('div', { class: 'section' });
   root.append(formHost, compareHost);
 
+  // Cada pergunta é um painel com a sua cor pastel (css: .wq[data-hue]); as respostas são ícones.
+  const panel = (def, ...body) => h('div', { class: 'q wq', 'data-hue': def.hue, 'data-q': def.key },
+    h('div', { class: 'wq-head' },
+      h('span', { class: 'wq-badge', html: icon(def.badge, 22) }),
+      h('div', { class: 'wq-title' }, h('h4', { id: `wq-${def.key}` }, def.title), def.hint ? h('p', { class: 'wq-hint' }, def.hint) : null)),
+    body);
+  const switchRow = (ic, text, hint, input) => h('label', { class: 'switch wq-sw' },
+    h('span', { class: 'wq-sw-main' }, h('span', { class: 'wq-sw-ico', html: icon(ic, 20) }), h('span', null, text, hint ? h('small', null, hint) : null)), input);
+
+  function periodPanel(draft) {
+    const flow = iconScale({ options: WB_PERIOD.flow, value: draft.flow, label: 'Fluxo', onChange: (v) => { draft.flow = v; } });
+    const sub = h('div', { class: 'wq-sub', hidden: !draft.period }, h('div', { class: 'wq-subtitle' }, 'Fluxo'), flow);
+    const sw2 = h('input', { type: 'checkbox', checked: !!draft.cycleStart, onChange: () => { draft.cycleStart = sw2.checked; } });
+    const startRow = switchRow('wb-flag', 'Primeiro dia deste ciclo', 'Marca o início do ciclo', sw2);
+    startRow.hidden = !draft.period;
+    const sw = h('input', { type: 'checkbox', checked: !!draft.period, onChange: () => {
+      draft.period = sw.checked;
+      sub.hidden = startRow.hidden = !sw.checked;
+      first.classList.toggle('split', sw.checked);
+      if (!sw.checked) { draft.cycleStart = false; sw2.checked = false; }
+    } });
+    const first = switchRow('wb-drop', 'Menstruada neste dia', null, sw);
+    first.classList.toggle('split', !!draft.period); // o divisor só existe quando há uma segunda linha embaixo
+    return panel(WB_PERIOD, first, startRow, sub);
+  }
+
   function drawForm() {
     clear(formHost);
     const st = store.state;
     const cur = st.wellbeing.get(date) || { date };
     const draft = { ...cur };
     const isToday = date === dateKey();
-    formHost.appendChild(h('div', { class: 'card' },
-      h('div', { class: 'cal-head' },
-        iconBtn('left', 'Dia anterior', () => { date = dateKey(addDays(parseKey(date), -1)); drawForm(); }),
-        h('div', { style: { textAlign: 'center' } }, h('b', null, isToday ? 'Hoje' : fmtDateLong(parseKey(date))), isToday ? h('div', { class: 'muted', style: { fontSize: '13px' } }, fmtDateLong(parseKey(date))) : h('button', { class: 'link', type: 'button', onClick: () => { date = dateKey(); drawForm(); } }, 'Ir para hoje')),
-        iconBtn('right', 'Próximo dia', () => { if (date < dateKey()) { date = dateKey(addDays(parseKey(date), 1)); drawForm(); } })),
-      q('Menstruação', h('div', null,
-        (() => {
-          const flowWrap = h('div', { style: { marginTop: '10px', display: draft.period ? '' : 'none' } }, scale({ options: FLOW, value: draft.flow, onChange: (v) => { draft.flow = v; } }));
-          const sw = h('input', { type: 'checkbox', checked: !!draft.period, onChange: () => { draft.period = sw.checked; flowWrap.style.display = sw.checked ? '' : 'none'; if (!sw.checked) draft.cycleStart = false; startWrap.style.display = sw.checked ? '' : 'none'; } });
-          const sw2 = h('input', { type: 'checkbox', checked: !!draft.cycleStart, onChange: () => { draft.cycleStart = sw2.checked; } });
-          const startWrap = h('label', { class: 'switch', style: { display: draft.period ? '' : 'none' } }, h('span', null, 'Primeiro dia deste ciclo', h('small', null, 'Marca o início do ciclo')), sw2);
-          return h('div', null, h('label', { class: 'switch', style: { paddingTop: 0 } }, h('span', null, 'Menstruada neste dia'), sw), startWrap, flowWrap);
-        })())),
-      q('Humor', scale({ options: MOOD, value: draft.mood, onChange: (v) => { draft.mood = v; } })),
-      q('Energia', scale({ options: ENERGY, value: draft.energy, onChange: (v) => { draft.energy = v; } })),
-      q('Cansaço geral', scale({ options: TIRED, value: draft.tiredness, onChange: (v) => { draft.tiredness = v; } })),
-      q('Fadiga muscular', scale({ options: TIRED, value: draft.fatigue, onChange: (v) => { draft.fatigue = v; } })),
-      q('Recuperação', scale({ options: RECOV, value: draft.recovery, onChange: (v) => { draft.recovery = v; } })),
-      (() => { const t = textArea(draft.note || '', { placeholder: 'Observações (sono, alimentação, dor, estresse…)' }); t.addEventListener('input', () => { draft.note = t.value; }); return q('Observações', t); })(),
-      h('div', { class: 'row' }, btn('Salvar', { cls: 'grow', onClick: async () => {
+    const note = textArea(draft.note || '', { placeholder: 'Observações (sono, alimentação, dor, estresse…)', 'aria-labelledby': `wq-${WB_NOTE.key}` });
+    note.addEventListener('input', () => { draft.note = note.value; });
+    formHost.appendChild(h('div', { class: 'wq-list' },
+      h('div', { class: 'card' },
+        h('div', { class: 'cal-head', style: { marginBottom: 0 } },
+          iconBtn('left', 'Dia anterior', () => { date = dateKey(addDays(parseKey(date), -1)); drawForm(); }),
+          h('div', { style: { textAlign: 'center' } }, h('b', null, isToday ? 'Hoje' : fmtDateLong(parseKey(date))), isToday ? h('div', { class: 'muted', style: { fontSize: '13px' } }, fmtDateLong(parseKey(date))) : h('button', { class: 'link', type: 'button', onClick: () => { date = dateKey(); drawForm(); } }, 'Ir para hoje')),
+          iconBtn('right', 'Próximo dia', () => { if (date < dateKey()) { date = dateKey(addDays(parseKey(date), 1)); drawForm(); } }))),
+      periodPanel(draft),
+      WB_SCALES.map((def) => panel(def, iconScale({ options: def.options, value: draft[def.key], labelledBy: `wq-${def.key}`, onChange: (v) => { draft[def.key] = v; } }))),
+      panel(WB_NOTE, note),
+      h('div', { class: 'row wq-actions' }, btn('Salvar', { cls: 'grow', onClick: async () => {
         const rec = { ...draft, date };
         const has = rec.period || rec.mood || rec.energy || rec.tiredness || rec.fatigue || rec.recovery || (rec.note || '').trim();
         if (!has) { if (store.state.wellbeing.has(date)) await store.deleteWellbeing(date); toast('Nada para salvar.'); return; }
         await store.saveWellbeing(rec); toast('Bem-estar salvo.'); drawCompare();
       } }),
         store.state.wellbeing.has(date) ? btn('', { kind: 'danger', ic: 'trash', aria: 'Apagar registro do dia', onClick: async () => { await store.deleteWellbeing(date); toast('Registro apagado.'); drawForm(); drawCompare(); } }) : null),
-      h('p', { class: 'disclaimer' }, 'Registros pessoais, guardados só na sua conta. Isto não é um diagnóstico nem uma orientação médica.')));
+      h('p', { class: 'disclaimer', style: { marginTop: 0 } }, 'Registros pessoais, guardados só na sua conta. Isto não é um diagnóstico nem uma orientação médica.')));
   }
-  const q = (title, node) => h('div', { class: 'q' }, h('h4', null, title), node);
 
   function drawCompare() {
     clear(compareHost);

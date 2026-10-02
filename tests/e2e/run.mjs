@@ -261,11 +261,70 @@ ok(await page.locator('.sheet input[placeholder="km"]').count() === 0, 'vôlei n
 await page.keyboard.press('Escape');
 
 await page.goto(BASE + '#/bem-estar'); await page.waitForSelector('.q');
-await page.locator('.q', { hasText: 'Energia' }).locator('.scale-btn', { hasText: 'Alta' }).first().click();
-await page.locator('.q', { hasText: 'Fadiga muscular' }).locator('.scale-btn', { hasText: 'Leve' }).click();
-await page.locator('.q', { hasText: 'Humor' }).locator('.scale-btn', { hasText: 'Bom' }).click();
+await page.locator('.q', { hasText: 'Energia' }).locator('.wq-opt', { hasText: 'Alta' }).first().click();
+await page.locator('.q', { hasText: 'Fadiga muscular' }).locator('.wq-opt', { hasText: 'Leve' }).click();
+await page.locator('.q', { hasText: 'Humor' }).locator('.wq-opt', { hasText: 'Bom' }).click();
 await page.locator('.q', { hasText: 'Menstruação' }).locator('.switch').first().click();
 await page.locator('.q', { hasText: 'Menstruação' }).getByText('Primeiro dia deste ciclo').click();
+// ---- Bem-estar: respostas com ÍCONE e uma cor pastel por PERGUNTA (claro e escuro) ----
+const humorBom = page.locator('.q', { hasText: 'Humor' }).locator('.wq-opt', { hasText: 'Bom' });
+ok(await humorBom.getAttribute('aria-pressed') === 'true', 'resposta escolhida fica marcada (aria-pressed)');
+await humorBom.click();
+ok(await page.locator('.wq[data-q="mood"] .wq-opt[aria-pressed="true"]').count() === 0, 'tocar de novo na resposta escolhida limpa a escolha');
+await humorBom.click();
+ok(await humorBom.getAttribute('aria-pressed') === 'true', 'e dá para escolher outra vez');
+await page.locator('.q', { hasText: 'Menstruação' }).locator('.wq-opt', { hasText: 'Médio' }).click();
+await page.locator('.q', { hasText: 'Cansaço geral' }).locator('.wq-opt', { hasText: 'Moderado' }).click();
+await page.locator('.q', { hasText: 'Recuperação' }).locator('.wq-opt', { hasText: 'Boa' }).click();
+const wbUi = await page.evaluate(() => {
+  const panels = [...document.querySelectorAll('.wq')];
+  const bg = new Set(panels.map((p) => getComputedStyle(p).backgroundColor));
+  const opts = [...document.querySelectorAll('.wq-opt')];
+  const groupsDistinct = [...document.querySelectorAll('.wq-scale')].every((g) => { const svgs = [...g.querySelectorAll('.wq-opt svg')].map((s) => s.innerHTML); return svgs.length === g.children.length && new Set(svgs).size === svgs.length; });
+  return {
+    panels: panels.length, colors: bg.size, opts: opts.length,
+    withIcon: opts.filter((o) => o.querySelector('svg path, svg circle, svg rect') && o.querySelector('svg').getAttribute('aria-hidden') === 'true').length,
+    withLabel: opts.filter((o) => (o.querySelector('.wq-lab')?.textContent || '').trim().length > 0).length,
+    groupsDistinct,
+  };
+});
+ok(wbUi.panels === 7 && wbUi.colors === 7, `cada pergunta tem a sua cor pastel (${wbUi.colors} fundos diferentes em ${wbUi.panels} painéis)`);
+ok(wbUi.opts === 28 && wbUi.withIcon === 28 && wbUi.withLabel === 28, `todas as ${wbUi.opts} respostas têm ícone (decorativo, aria-hidden) e rótulo`);
+ok(wbUi.groupsDistinct, 'dentro de cada pergunta, cada resposta tem um ícone diferente');
+const groupsNamed = await Promise.all(['Humor', 'Energia', 'Cansaço geral', 'Fadiga muscular', 'Recuperação', 'Fluxo'].map((n) => page.getByRole('group', { name: n, exact: true }).count()));
+ok(groupsNamed.every((c) => c === 1), 'cada grupo de respostas tem nome acessível (o título da pergunta)');
+
+// contraste real (renderizado) nos dois temas: botão escolhido, não escolhido, ícone e título
+const measureContrast = () => page.evaluate(() => {
+  const px = (c) => { const cv = document.createElement('canvas'); cv.width = cv.height = 1; const x = cv.getContext('2d', { willReadFrequently: true }); x.fillStyle = '#000'; x.clearRect(0, 0, 1, 1); x.fillStyle = c; x.fillRect(0, 0, 1, 1); return [...x.getImageData(0, 0, 1, 1).data.slice(0, 3)]; };
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = (c) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
+  const cr = (a, b) => { const [hi, lo] = [L(px(a)), L(px(b))].sort((m, n) => n - m); return (hi + 0.05) / (lo + 0.05); };
+  const min = { selText: 99, selIcon: 99, text: 99, icon: 99, title: 99 }, worst = {};
+  const note = (k, v, who) => { if (v < min[k]) { min[k] = v; worst[k] = who; } };
+  for (const panel of document.querySelectorAll('.wq')) {
+    const who = panel.dataset.q, pbg = getComputedStyle(panel).backgroundColor;
+    note('title', cr(getComputedStyle(panel.querySelector('h4')).color, pbg), who);
+    for (const o of panel.querySelectorAll('.wq-opt')) {
+      if (!o.offsetParent) continue;
+      const ob = getComputedStyle(o).backgroundColor, on = o.getAttribute('aria-pressed') === 'true';
+      note(on ? 'selText' : 'text', cr(getComputedStyle(o.querySelector('.wq-lab')).color, ob), who);
+      note(on ? 'selIcon' : 'icon', cr(getComputedStyle(o.querySelector('.wq-ico')).color, ob), who);
+    }
+  }
+  return { min, worst };
+});
+const origTheme = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
+for (const theme of ['light', 'dark']) {
+  await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
+  await wait(450); // deixa a transição de cor terminar
+  const { min } = await measureContrast();
+  ok(min.selText >= 4.5 && min.selIcon >= 4.5, `tema ${theme}: resposta escolhida legível (texto ${min.selText.toFixed(1)}:1, ícone ${min.selIcon.toFixed(1)}:1)`);
+  ok(min.text >= 4.5 && min.icon >= 3 && min.title >= 4.5, `tema ${theme}: rótulos ${min.text.toFixed(1)}:1, ícones ${min.icon.toFixed(1)}:1 e títulos ${min.title.toFixed(1)}:1 acima do mínimo (4,5 / 3 / 4,5)`);
+  const distinct = await page.evaluate(() => new Set([...document.querySelectorAll('.wq')].map((p) => getComputedStyle(p).backgroundColor)).size);
+  ok(distinct === 7, `tema ${theme}: as 7 perguntas continuam com cores diferentes`);
+}
+await page.evaluate((t) => { if (t == null) document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); }, origTheme);
 await page.getByRole('button', { name: 'Salvar', exact: true }).click();
 await wait(400);
 const wb = await sessEval(async () => [...(await import('/js/store.js')).state.wellbeing.values()][0]);
