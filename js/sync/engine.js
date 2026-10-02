@@ -305,7 +305,9 @@ export async function pullAll() {
       for (const r of rows) await p.apply(r, pend);
       changed = true;
     }
-    cursors[p.name] = maxUpdated(rows, cursors[p.name]) || cursors[p.name] || Date.now() - 1000;
+    // O cursor vem SOMENTE de timestamps do servidor (nunca do relógio do aparelho): sem linhas, continua vazio
+    // e a próxima puxada relê a tabela inteira (barato quando está vazia).
+    cursors[p.name] = maxUpdated(rows, cursors[p.name]) || cursors[p.name] || null;
   }
   await db.kvSet(cursorKey, cursors);
   const meta = await db.kvGet('meta', {});

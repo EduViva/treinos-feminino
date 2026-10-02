@@ -34,8 +34,9 @@ export function createFake({ autoconfirm = true } = {}) {
   const storage = new Map();         // "bucket/path" → { blob(Buffer), type }
   const codes = new Map();           // email → código (signup/recovery)
   const log = [];
-  let tick = 0, offline = false;
-  const now = () => new Date(Date.parse('2026-01-01T00:00:00Z') + (++tick) * 1000 + Date.now() % 1).toISOString();
+  let offline = false;
+  let last = 0;
+  const now = () => { last = Math.max(last + 1, Date.now()); return new Date(last).toISOString(); }; // relógio do servidor: real e monotônico
   const state = { autoconfirm, failNext: [], delay: 0 };
 
   const userByToken = (req) => {
@@ -246,7 +247,18 @@ export function createFake({ autoconfirm = true } = {}) {
     const [, bucket, objPath] = m;
     if (req.method === 'POST' || req.method === 'PUT') {
       if (bucket !== 'user-media' || !decodeURIComponent(objPath).startsWith(`${uid}/`)) return json(403, { message: 'new row violates row-level security policy', statusCode: '403', error: 'Unauthorized' });
-      storage.set(`${bucket}/${decodeURIComponent(objPath)}`, { blob: req.rawBody, type: req.headers['content-type'] || 'application/octet-stream' });
+      let blob = req.rawBody, type = req.headers['content-type'] || 'application/octet-stream';
+      const mp = /multipart\/form-data;\s*boundary=(.+)$/i.exec(type);       // supabase-js envia o arquivo em multipart
+      if (mp) {
+        const raw = req.rawBody.toString('latin1'), parts = raw.split(`--${mp[1]}`);
+        const file = parts.find((p) => /filename=/.test(p.split('\r\n\r\n')[0]));
+        if (file) {
+          const [head, ...rest] = file.split('\r\n\r\n');
+          blob = Buffer.from(rest.join('\r\n\r\n').replace(/\r\n$/, ''), 'latin1');
+          type = /content-type:\s*([^\r\n]+)/i.exec(head)?.[1] || 'application/octet-stream';
+        }
+      }
+      storage.set(`${bucket}/${decodeURIComponent(objPath)}`, { blob, type });
       return json(200, { Id: randomUUID(), Key: `${bucket}/${objPath}` });
     }
     if (req.method === 'GET') {

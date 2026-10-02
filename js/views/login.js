@@ -17,6 +17,9 @@ function passwordInput({ value = '', autocomplete = 'current-password', label = 
   return { el, node: h('div', { class: 'pw' }, el, eye) };
 }
 
+// <label> de verdade (o campo de senha tem um botão dentro, então `field()` o trataria como grupo).
+const labeled = (label, node, hint) => h('label', { class: 'field' }, h('span', { class: 'field-label' }, label), node, hint ? h('span', { class: 'field-hint' }, hint) : null);
+
 // mode: 'signin' | 'signup' | 'confirm' | 'forgot' | 'reset' | 'newpass'
 export function authView({ mode = 'signin', email = '', onDone, notice = '' } = {}) {
   let cur = mode, mail = email, busy = false;
@@ -61,7 +64,7 @@ export function authView({ mode = 'signin', email = '', onDone, notice = '' } = 
 
   function signin() {
     const pw = passwordInput();
-    card.appendChild(form([emailField(), field('Senha', pw.node), submit('Entrar'),
+    card.appendChild(form([emailField(), labeled('Senha', pw.node), submit('Entrar'),
       h('div', { class: 'links' }, link('Esqueci minha senha', 'forgot'))], (b) => run(b, async () => {
       mail = readMail();
       if (!mail || !pw.el.value) return say('Informe e-mail e senha.');
@@ -76,7 +79,7 @@ export function authView({ mode = 'signin', email = '', onDone, notice = '' } = 
   function signup() {
     const name = input({ autocomplete: 'given-name', autocapitalize: 'words', placeholder: 'Como você quer ser chamada?', 'aria-label': 'Nome', enterkeyhint: 'next' });
     const pw = passwordInput({ autocomplete: 'new-password', label: 'Senha', placeholder: 'mínimo 8 caracteres' });
-    card.appendChild(form([field('Nome', name), emailField(), field('Senha', pw.node, 'Use pelo menos 8 caracteres.'), submit('Criar conta'),
+    card.appendChild(form([field('Nome', name), emailField(), labeled('Senha', pw.node, 'Use pelo menos 8 caracteres.'), submit('Criar conta'),
       h('p', { class: 'muted', style: { fontSize: '13px', marginTop: '12px' } }, 'Seus treinos ficam salvos na sua conta, protegidos por login, e continuam funcionando sem internet.')], (b) => run(b, async () => {
       mail = readMail();
       if (!name.value.trim()) return say('Diga seu nome para começar.');
@@ -126,7 +129,7 @@ export function authView({ mode = 'signin', email = '', onDone, notice = '' } = 
     const pw = passwordInput({ autocomplete: 'new-password', label: 'Nova senha', placeholder: 'mínimo 8 caracteres' });
     card.append(h('h3', { style: { marginBottom: '6px' } }, 'Nova senha'),
       h('p', { class: 'muted', style: { marginBottom: '14px' } }, `Digite o código enviado para ${mail} e escolha a nova senha.`),
-      form([field('Código do e-mail', code), field('Nova senha', pw.node), submit('Salvar nova senha'),
+      form([field('Código do e-mail', code), labeled('Nova senha', pw.node), submit('Salvar nova senha'),
         h('div', { class: 'links' }, link('Voltar', 'signin'))], (b) => run(b, async () => {
         if (code.value.length < 6) return say('Digite o código de 6 dígitos.');
         if (pw.el.value.length < 8) return say('A senha precisa ter pelo menos 8 caracteres.');
@@ -141,7 +144,7 @@ export function authView({ mode = 'signin', email = '', onDone, notice = '' } = 
   function newpass() {
     const pw = passwordInput({ autocomplete: 'new-password', label: 'Nova senha', placeholder: 'mínimo 8 caracteres' });
     card.append(h('h3', { style: { marginBottom: '6px' } }, 'Escolha uma nova senha'),
-      form([field('Nova senha', pw.node), submit('Salvar nova senha')], (b) => run(b, async () => {
+      form([labeled('Nova senha', pw.node), submit('Salvar nova senha')], (b) => run(b, async () => {
         if (pw.el.value.length < 8) return say('A senha precisa ter pelo menos 8 caracteres.');
         await auth.updatePassword(pw.el.value);
         await onDone();
