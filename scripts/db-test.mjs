@@ -3,6 +3,7 @@
 //   node scripts/db-test.mjs                      → no projeto Supabase (Management API)
 //   DATABASE_URL=postgres://… node scripts/db-test.mjs   → em qualquer Postgres (usa o psql)
 //
+// Atrás de proxy corporativo/sandbox: NODE_USE_ENV_PROXY=1 node scripts/db-test.mjs (Node ≥ 22.21).
 // Credenciais do projeto: SUPABASE_PROJECT_REF e SUPABASE_ACCESS_TOKEN (ou proxy já autenticado).
 // Os testes rodam numa transação que SEMPRE é revertida — não deixam dados.
 import { readFileSync } from 'node:fs';
