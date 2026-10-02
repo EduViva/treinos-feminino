@@ -271,8 +271,7 @@ async function eraseAll() {
   if (!(await confirmDialog({ title: 'Tem certeza?', message: 'Não há como desfazer.', confirmText: 'Apagar tudo', danger: true }))) return;
   if (navigator.onLine === false) return alertDialog('Sem internet', 'Para apagar também os dados da nuvem é preciso estar online. Conecte-se e tente de novo.');
   try { await sync.eraseRemoteData(); } catch (e) { return alertDialog('Não foi possível apagar na nuvem', `${e.message}\n\nNada foi apagado deste aparelho.`); }
-  await store.eraseEverything();
-  await sync.syncNow(); // recarrega o catálogo de exercícios
+  await store.eraseEverything(); // também recarrega o catálogo de exercícios
   toast('Dados apagados.');
   app.navigate('/boas-vindas');
 }

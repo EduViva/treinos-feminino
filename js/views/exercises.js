@@ -218,7 +218,7 @@ function mediaManager(ex) {
         if (m.kind === 'video') tile.appendChild(h('span', { class: 'vid' }, 'vídeo'));
       });
     }
-    if (!list.length) grid.appendChild(h('p', { class: 'muted', style: { gridColumn: '1 / -1' } }, 'Adicione fotos ou vídeos do aparelho/execução. Eles ficam só neste aparelho e podem ser trocados sem afetar o histórico.'));
+    if (!list.length) grid.appendChild(h('p', { class: 'muted', style: { gridColumn: '1 / -1' } }, 'Adicione fotos ou vídeos do aparelho/execução. Ficam guardados só na sua conta (ninguém mais vê) e podem ser trocados sem afetar o histórico.'));
   }
   function tileMenu(m) {
     menuSheet('Minha mídia', [

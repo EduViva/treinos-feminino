@@ -458,6 +458,7 @@ export async function exportAll({ includeMedia = true } = {}) {
     profile: state.profile, settings: state.settings, meta: state.meta,
   };
   for (const n of DATA_STORES) data[n] = await db.getAll(n);
+  data.exercises = data.exercises.filter((e) => !e.builtin); // o catálogo é do servidor: o backup leva só os exercícios próprios
   data.media = [];
   if (includeMedia) {
     for (const m of await db.getAll('media')) {
@@ -563,6 +564,7 @@ export async function eraseEverything() {
   await db.wipeAll();
   await loadState();
   emit('import');
+  if (sync.isStarted()) await sync.syncNow().catch(() => {}); // o catálogo (cache local) é baixado de novo
 }
 
 export async function storageEstimate() {

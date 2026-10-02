@@ -214,7 +214,7 @@ async function doImport(plan) {
       let exId = it.match?.id;
       if (!exId) {
         const e = store.blankExercise();
-        e.name = it.name.replace(/\b\w/g, (c) => c.toUpperCase()); e.group = tx.groups.name('outros'); e.equipment = tx.equipment.name('outro'); e.repUnit = it.secUnit ? 'seg' : 'reps';
+        e.name = it.name.replace(/(^|\s)(\p{L})/gu, (m, sp, c) => sp + c.toUpperCase()); e.group = tx.groups.name('outros'); e.equipment = tx.equipment.name('outro'); e.repUnit = it.secUnit ? 'seg' : 'reps';
         e.defaults = { sets: it.sets || 3, reps: it.reps || 12, load: it.load || 0, rest: it.rest || store.state.settings.defaultRest, loadStep: 2 };
         await store.saveExercise(e); exId = e.id;
       }

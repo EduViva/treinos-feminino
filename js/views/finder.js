@@ -41,7 +41,7 @@ export function starButton(ex, onToggle) {
 const load = (key) => { try { return JSON.parse(sessionStorage.getItem(`finder-${key}`) || 'null'); } catch { return null; } };
 const save = (key, f) => { try { sessionStorage.setItem(`finder-${key}`, JSON.stringify({ ...f, equipment: [...f.equipment], types: [...f.types], levels: [...f.levels] })); } catch { /* sem sessionStorage */ } };
 
-export function createFinder({ key, getList, renderRow, onCreate, grouped = true, sections = false, pageSize = 60, page = false, rememberQuery = true, placeholder = 'Buscar exercício (ex.: supino, puxada, glúteo)…', persist = true }) {
+export function createFinder({ key, getList, renderRow, onCreate, grouped = true, sections = false, pageSize = 60, page = false, rememberQuery = true, placeholder = 'Buscar (ex.: supino, puxada)', persist = true }) {
   const saved = persist ? load(key) : null;
   const f = { q: rememberQuery ? (saved?.q || '') : '', group: saved?.group || 'Todos', equipment: new Set(saved?.equipment || []), types: new Set(saved?.types || []), levels: new Set(saved?.levels || []), fav: !!saved?.fav };
   let limit = pageSize, panelOpen = false, timer = null;

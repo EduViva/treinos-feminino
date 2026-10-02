@@ -54,8 +54,10 @@ try {
   await waitFor(() => fake.db.workouts.length === 5, 9000, '5 treinos no servidor');
   const wk = fake.db.workouts.filter((w) => w.user_id === uA.id);
   R.ok(wk.length === 5 && wk.every((w) => w.created_by === uA.id), '5 treinos (Segunda–Sexta) em workouts, com autoria');
+  await waitFor(() => fake.db.workout_exercises.filter((i) => i.user_id === uA.id).length >= 45, 9000, 'itens dos treinos no servidor');
   const items = fake.db.workout_exercises.filter((i) => i.user_id === uA.id);
   R.ok(items.length >= 45 && items.every((i) => fake.db.exercises.some((e) => e.id === i.exercise_id)), `itens em workout_exercises (${items.length}) apontam para exercícios do catálogo`);
+  await waitFor(() => fake.db.body_weights.some((w) => w.user_id === uA.id), 9000, 'peso no servidor'); // o envio segue a ordem das FKs: o peso vai depois dos treinos
   R.ok(fake.db.body_weights.some((w) => w.user_id === uA.id && Number(w.weight_kg) === 62.5), 'peso do perfil registrado em body_weights');
   await A.page.screenshot({ path: 'tests/e2e/out/cloud-01-home.png' });
 

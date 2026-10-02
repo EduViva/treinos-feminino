@@ -1,29 +1,27 @@
 // Tour visual com dados realistas (12 semanas). Gera screenshots para revisão.
 // uso: node tests/e2e/tour.mjs <pasta-saida> [largura]
-import { chromium } from './pw.mjs';
-import { start } from '../../scripts/serve.mjs';
+import { makeEnv, catalogId } from './harness.mjs';
+import { LEGACY_EXERCISE_SLUGS } from '../../js/data/legacy-map.js';
 import { mkdirSync } from 'node:fs';
 
 const OUT = process.argv[2] || 'tests/e2e/out/tour';
 const W = Number(process.argv[3] || 390);
 mkdirSync(OUT, { recursive: true });
-const server = await start(8128);
-const b = await chromium.launch();
-const ctx = await b.newContext({ colorScheme: process.env.SCHEME || 'light', viewport: { width: W, height: 800 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'pt-BR' });
-const p = await ctx.newPage();
-const errs = [];
-p.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
-p.on('console', (m) => { if (m.type() === 'error') errs.push('CONSOLE ' + m.text()); });
-await p.goto('http://localhost:8128/');
+const env = await makeEnv({ port: 8128 });
+const { session } = env.fake.createUser({ email: 'ana@teste.com', password: 'senha-forte-1', name: 'Ana' });
+const dev = await env.device({ session, viewport: { width: W, height: 800 }, name: 'tour' });
+const p = dev.page, errs = env.errors, BASE = env.BASE;
+const ID = Object.fromEntries(await Promise.all(Object.entries(LEGACY_EXERCISE_SLUGS).map(async ([k, v]) => [k, await catalogId(v)])));
+await p.goto(BASE);
 await p.waitForSelector('.hero');
 
-await p.evaluate(async () => {
+await p.evaluate(async (ID) => {
   const s = await import('/js/store.js');
   await s.saveProfile({ name: 'Ana Souza', age: 34, sex: 'Feminino', height: 165, weight: 63, goal: 'Hipertrofia (ganhar massa)', level: 'Intermediário' });
   await s.loadSeedWorkouts();
   const DAY = 86400000, now = Date.now();
   const W = s.state.workouts;
-  const loads = { 'ex-leg-press': 40, 'ex-extensora': 25, 'ex-flexora': 20, 'ex-abdutora': 30, 'ex-pelvica': 30, 'ex-panturrilha': 8 };
+  const loads = { [ID['ex-leg-press']]: 40, [ID['ex-extensora']]: 25, [ID['ex-flexora-deitada']]: 20, [ID['ex-abdutora']]: 30, [ID['ex-pelvica']]: 30 };
   let k = 0;
   for (let wk = 11; wk >= 0; wk--) {
     for (const [dow, wi] of [[1, 0], [3, 1], [5, 2]]) {
@@ -46,7 +44,7 @@ await p.evaluate(async () => {
           planned: { sets: 3, reps: it.reps, load, rest: it.rest }, target: { sets: 3, reps: it.reps, load, rest: it.rest }, changes: [], status: 'done',
           startedAt: t0.getTime() + i * 420000, endedAt: t0.getTime() + i * 420000 + 380000, durationSec: 380, sets };
       });
-      const rec = { id: 'tour-' + k, workoutId: w.id, workoutName: w.name, startedAt: t0.getTime(), endedAt: t0.getTime() + 3300000, durationSec: 3300 + (k % 5) * 120, feel: 3 + (k % 3), note: '', exercises: exs };
+      const rec = { id: crypto.randomUUID(), workoutId: w.id, workoutName: w.name, startedAt: t0.getTime(), endedAt: t0.getTime() + 3300000, durationSec: 3300 + (k % 5) * 120, feel: 3 + (k % 3), note: '', exercises: exs };
       const { sessionTotals } = await import('/js/stats.js');
       rec.totals = sessionTotals(rec);
       await s.addSession(rec);
@@ -56,7 +54,7 @@ await p.evaluate(async () => {
   const types = ['corrida', 'caminhada', 'bike', 'volei', 'pingpong'];
   for (let i = 0; i < 16; i++) {
     const t = now - (i * 5 + 1) * DAY; const type = types[i % 5];
-    await s.saveActivity({ id: 'act-' + i, type, startedAt: t, durationMin: 30 + (i % 4) * 10, distanceKm: ['corrida', 'caminhada', 'bike'].includes(type) ? 4 + (i % 5) : null, paceSecKm: type === 'corrida' ? 330 + (i % 4) * 12 : null, speedKmh: type === 'bike' ? 16 + i % 4 : null, intensity: 1 + (i % 3), calories: 250 + i * 10, note: '' });
+    await s.saveActivity({ id: crypto.randomUUID(), type, startedAt: t, durationMin: 30 + (i % 4) * 10, distanceKm: ['corrida', 'caminhada', 'bike'].includes(type) ? 4 + (i % 5) : null, paceSecKm: type === 'corrida' ? 330 + (i % 4) * 12 : null, speedKmh: type === 'bike' ? 16 + i % 4 : null, intensity: 1 + (i % 3), calories: 250 + i * 10, note: '' });
   }
   const pd = (n) => { const d = new Date(now - n * DAY); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
   for (let n = 0; n < 60; n++) {
@@ -64,16 +62,21 @@ await p.evaluate(async () => {
     await s.saveWellbeing({ date: pd(n), mood: 3 + ((n * 7) % 3), energy: 2 + ((n * 5) % 4), tiredness: 1 + ((n * 3) % 4), fatigue: 1 + ((n * 11) % 4), recovery: 2 + ((n * 2) % 4), period: cd < 5, flow: cd < 5 ? 'médio' : undefined, cycleStart: cd === 0 });
   }
   for (let n = 0; n < 9; n++) await s.addWeight({ date: pd(n * 9), kg: 64.5 - n * 0.2 + (n % 2) * 0.3 });
-});
+}, ID);
 
 const shot = async (name, o = {}) => { await p.waitForTimeout(o.wait ?? 450); await p.screenshot({ path: `${OUT}/${name}.png`, fullPage: !!o.full }); };
-const go = async (hash, sel) => { await p.goto('http://localhost:8128/' + hash); await p.waitForSelector(sel, { timeout: 5000 }); };
+const go = async (hash, sel) => { await p.goto(BASE + hash); await p.waitForSelector(sel, { timeout: 5000 }); };
 
 await go('#/', '.next-card'); await shot('01-home', { full: true });
 await go('#/treinos', '.wk-card'); await shot('02-treinos', { full: true });
 await p.locator('.wk-card').first().getByRole('button', { name: 'Editar' }).click(); await p.waitForSelector('.ex-row'); await shot('03-editor-treino', { full: true });
+await p.getByRole('button', { name: 'Adicionar exercícios' }).click(); await p.waitForSelector('.sheet .finder'); await shot('03b-seletor-exercicios', { wait: 600 });
+await p.locator('.sheet input[aria-label="Buscar exercício"]').fill('puxada'); await shot('03c-seletor-busca-puxada', { wait: 500 });
+await p.keyboard.press('Escape');
 await go('#/exercicios', '.group-h'); await shot('04-biblioteca', { full: true });
-await go('#/exercicio/ex-abdutora', '.visual'); await shot('05-exercicio-abdutora', { wait: 900 });
+await p.getByLabel('Buscar exercício').fill('supino'); await shot('04b-biblioteca-busca-supino', { wait: 500 });
+await p.getByRole('button', { name: 'Filtros' }).click(); await shot('04c-biblioteca-filtros', { wait: 400 });
+await go(`#/exercicio/${ID['ex-abdutora']}`, '.visual'); await shot('05-exercicio-abdutora', { wait: 900 });
 await p.getByRole('button', { name: 'Ver em quadros' }).click(); await shot('06-exercicio-quadros', { wait: 500 });
 await go('#/evolucao', '.chart svg'); await shot('07-evolucao', { full: true });
 await go('#/calendario', '.cal-grid'); await p.locator('.cal-day.today').click(); await shot('08-calendario', { full: true });
@@ -88,4 +91,4 @@ await p.getByRole('button', { name: 'Iniciar série' }).click(); await shot('14-
 await p.getByRole('button', { name: 'Terminei' }).click(); await shot('15-rest', { wait: 700 });
 await p.getByRole('button', { name: 'Menu do treino' }).click(); await p.getByRole('button', { name: /Ver todos/ }).click(); await shot('16-lista-exercicios', { wait: 500 });
 console.log(errs.length ? errs.join('\n') : 'sem erros');
-await b.close(); server.close();
+await env.close();

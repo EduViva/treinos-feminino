@@ -64,7 +64,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .tab.on { color: var(--primary); }
 .tab.on .ico { background: var(--primary-soft); }
 .tab .ico { padding: 3px 12px; border-radius: 999px; }
-@media (max-width: 370px) { .tab { font-size: 9px; letter-spacing: -.02em; } .tab .ico { padding: 3px 8px; } }
+@media (max-width: 370px) { .tab { font-size: 9px; letter-spacing: -.02em; } .tab .ico { padding: 3px 8px; } .grid2 > .btn { font-size: 14.5px; padding: 0 10px; gap: 6px; } }
 
 .page-head { display: flex; align-items: center; gap: 8px; margin: 4px 0 16px; }
 .page-head .ph-text { flex: 1; min-width: 0; }
@@ -658,3 +658,4 @@ input[type=email], input[type=password], input[type=search], input[type=tel] {
   width: 100%; min-height: 50px; padding: 10px 14px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--card); outline: none; appearance: none; -webkit-appearance: none;
 }
 input[type=email]:focus, input[type=password]:focus { border-color: var(--primary); }
+.finder-panel[hidden] { display: none; }
