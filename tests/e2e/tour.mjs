@@ -85,10 +85,9 @@ await p.getByRole('button', { name: 'Ciclo', exact: true }).click(); await shot(
 await go('#/perfil', '.card'); await shot('11-perfil', { full: true });
 // modo treino
 await go('#/', '.next-card');
-await p.getByRole('button', { name: 'Iniciar treino' }).click(); await p.waitForSelector('.sess'); await shot('12-intro', { wait: 900 });
-await p.getByRole('button', { name: 'Iniciar exercício' }).click(); await shot('13-ready', { wait: 700 });
+await p.getByRole('button', { name: 'Iniciar treino' }).click(); await p.waitForSelector('.sess'); await shot('12-inicio-treino', { wait: 900 });
 await p.getByRole('button', { name: 'Iniciar série' }).click(); await shot('14-running', { wait: 1200 });
-await p.getByRole('button', { name: 'Terminei' }).click(); await shot('15-rest', { wait: 700 });
+await p.getByRole('button', { name: /^(Descansar|Terminei)$/ }).click(); await shot('15-rest', { wait: 700 });
 await p.getByRole('button', { name: 'Menu do treino' }).click(); await p.getByRole('button', { name: /Ver todos/ }).click(); await shot('16-lista-exercicios', { wait: 500 });
 console.log(errs.length ? errs.join('\n') : 'sem erros');
 await env.close();

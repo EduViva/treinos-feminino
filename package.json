@@ -10,7 +10,7 @@
     "icons": "node scripts/make-icons.mjs",
     "vendor": "node scripts/vendor.mjs",
     "test": "node --test tests/unit/*.test.mjs",
-    "e2e": "node tests/e2e/run.mjs && node tests/e2e/run2.mjs && node tests/e2e/cloud.mjs && node tests/e2e/legacy.mjs",
+    "e2e": "node tests/e2e/run.mjs && node tests/e2e/run2.mjs && node tests/e2e/edit.mjs && node tests/e2e/cloud.mjs && node tests/e2e/legacy.mjs",
     "catalog:build": "node scripts/build-seed.mjs",
     "catalog:check": "node scripts/build-seed.mjs --check",
     "db:test": "node scripts/db-test.mjs"

@@ -7,6 +7,7 @@ import {
 } from '../ui.js';
 import { exThumb } from '../visual.js';
 import { createFinder, exerciseMeta } from './finder.js';
+import { editScreen } from '../edit.js';
 import * as tx from '../data/taxonomy.js';
 import { parseWorkoutText, matchExercise } from '../importer.js';
 import { libraryTabs, loadText, setsRepsText, restText } from './common.js';
@@ -66,8 +67,9 @@ async function move(ws, idx, d) {
 }
 async function delWorkout(w) {
   const ok = await confirmDialog({ title: `Excluir ${w.name}?`, message: 'O plano será removido, mas todo o histórico de treinos já realizados continua intacto.', confirmText: 'Excluir', danger: true });
-  if (!ok) return;
+  if (!ok) return false;
   await store.deleteWorkout(w.id); toast('Treino excluído.'); app.rerender();
+  return true;
 }
 
 // ================= Seletor de exercícios =================
@@ -103,17 +105,20 @@ export function pickExercises({ multi = true, title = 'Escolher exercício', exc
 }
 
 // ================= Editor =================
-export function workoutEditorView([id]) {
-  const isNew = id === 'novo';
-  let w = isNew ? store.blankWorkout() : store.clone(store.getWorkout(id));
-  if (!w) return h('div', null, pageHead('Treino', { back: () => app.navigate('/treinos') }), empty({ title: 'Treino não encontrado' }));
-  let saved = !isNew;
-  const root = h('div');
-  const persist = async () => { w = await store.saveWorkout(w); saved = true; };
+// As alterações ficam só na tela até apertar "Salvar" (ou "Descartar"); ao sair com alterações o app pergunta.
+const keyOf = (w) => JSON.stringify({ name: (w.name || '').trim(), description: (w.description || '').trim(), items: w.items });
 
-  root.appendChild(pageHead(isNew ? 'Novo treino' : 'Editar treino', { back: () => app.navigate('/treinos') }));
-  const name = textInput(w.name, { 'aria-label': 'Nome do treino', onChange: async () => { w.name = name.value.trim() || w.name; await persist(); } });
-  const desc = textInput(w.description || '', { placeholder: 'Ex.: pernas e glúteos', 'aria-label': 'Descrição', onChange: async () => { w.description = desc.value.trim(); await persist(); } });
+export function workoutEditorView([id]) {
+  // volta de "criar exercício" / "ver animação": retoma o rascunho que ainda não foi salvo
+  const st = app.stagedWorkout && (app.stagedWorkout.routeId === id || app.stagedWorkout.w.id === id) ? app.stagedWorkout : null;
+  app.stagedWorkout = null;
+  let w = st ? st.w : (id === 'novo' ? store.blankWorkout() : store.clone(store.getWorkout(id)));
+  if (!w) return h('div', null, pageHead('Treino', { back: () => app.navigate('/treinos') }), empty({ title: 'Treino não encontrado' }));
+  const existed = () => !!store.getWorkout(w.id); // já foi salvo?
+  const root = h('div');
+  root.appendChild(pageHead(existed() ? 'Editar treino' : 'Novo treino', { back: () => app.navigate('/treinos') }));
+  const name = textInput(w.name, { 'aria-label': 'Nome do treino', onInput: () => { w.name = name.value; } });
+  const desc = textInput(w.description || '', { placeholder: 'Ex.: pernas e glúteos', 'aria-label': 'Descrição', onInput: () => { w.description = desc.value; } });
   root.appendChild(h('div', { class: 'card' }, field('Nome', name), field('Descrição', desc)));
 
   const list = h('div', { style: { marginTop: '16px' } });
@@ -137,12 +142,19 @@ export function workoutEditorView([id]) {
     list.appendChild(h('div', { style: { marginTop: '12px', display: 'grid', gap: '10px' } },
       btn('Adicionar exercícios', { kind: 'secondary', ic: 'plus', block: true, onClick: addExercises })));
   }
-  async function moveItem(i, d) { [w.items[i], w.items[i + d]] = [w.items[i + d], w.items[i]]; await persist(); draw(); }
+  const changed = () => { draw(); ed.check(); };
+  function moveItem(i, d) { [w.items[i], w.items[i + d]] = [w.items[i + d], w.items[i]]; changed(); }
+  // ida e volta (criar exercício, ver animação): o rascunho segue na memória e volta para esta tela
+  function stageAndGo(path) {
+    app.stagedWorkout = { w: store.clone(w), base: ed.base(), routeId: id };
+    ed.guard.release();
+    app.navigate(path);
+  }
   async function addExercises() {
     const ids = await pickExercises({ multi: true, title: 'Adicionar exercícios' });
-    if (ids[0] === '__new__') { await persist(); return app.navigate(`/exercicio/novo?w=${w.id}${ids.query ? `&nome=${encodeURIComponent(ids.query)}` : ''}`); }
+    if (ids[0] === '__new__') return stageAndGo(`/exercicio/novo?w=${w.id}${ids.query ? `&nome=${encodeURIComponent(ids.query)}` : ''}`);
     for (const id2 of ids) w.items.push(store.newWorkoutItem(id2));
-    if (ids.length) { await persist(); draw(); }
+    if (ids.length) changed();
   }
   function editItem(it) {
     const ex = store.getExercise(it.exerciseId);
@@ -151,27 +163,43 @@ export function workoutEditorView([id]) {
     const sLoad = stepper({ value: it.load || 0, min: 0, max: 999, step: ex?.defaults?.loadStep || 1, unit: 'kg' });
     const sRest = stepper({ value: it.rest, min: 0, max: 900, step: 15, decimals: 0, unit: 's' });
     const notes = textArea(it.notes || '', { placeholder: 'Observação deste exercício neste treino' });
+    const form = () => JSON.stringify([sSets.get(), sReps.get(), sLoad.get(), sRest.get(), notes.value.trim()]);
+    const initial = form();
     const s = openSheet({
-      title: ex?.name || 'Exercício', className: 'tall',
+      title: ex?.name || 'Exercício', className: 'tall', guard: () => form() !== initial,
       body: [
         h('div', { class: 'two' }, field('Séries', sSets), field(isTimed(ex?.repUnit) ? `Tempo (${unitShort(ex.repUnit)})` : 'Repetições', sReps)),
         h('div', { class: 'two' }, field('Carga', sLoad, ex?.bodyweight ? 'Peso corporal: deixe 0.' : null), field('Descanso', sRest)),
         field('Observações', notes),
-        h('p', { class: 'muted', style: { fontSize: '13px' } }, 'Alterar aqui muda o padrão deste treino daqui para frente. O histórico já realizado não é alterado.'),
+        h('p', { class: 'muted', style: { fontSize: '13px' } }, 'Vale para este treino daqui para frente (depois de salvar o treino). O histórico já realizado não é alterado.'),
         h('div', { class: 'menu', style: { marginTop: '8px' } },
-          h('button', { class: 'menu-item', type: 'button', onClick: async () => { s.close(); const [nid] = await pickExercises({ multi: false, title: 'Substituir por…' }); if (!nid) return; if (nid === '__new__') { await persist(); return app.navigate(`/exercicio/novo?w=${w.id}`); } const n = store.newWorkoutItem(nid); Object.assign(it, { exerciseId: nid, sets: n.sets, reps: n.reps, load: n.load, rest: n.rest }); await persist(); draw(); toast('Exercício substituído. Ajuste séries e carga se precisar.'); } }, h('span', { class: 'ico', html: icon('swap', 20) }), 'Substituir por outro exercício'),
-          h('a', { class: 'menu-item', href: `#/exercicio/${it.exerciseId}?w=${w.id}&i=${it.id}`, onClick: () => s.close() }, h('span', { class: 'ico', html: icon('film', 20) }), 'Ver animação e histórico'),
-          h('button', { class: 'menu-item danger', type: 'button', onClick: async () => { s.close(); w.items = w.items.filter((x) => x.id !== it.id); await persist(); draw(); } }, h('span', { class: 'ico', html: icon('trash', 20) }), 'Remover do treino')),
+          h('button', { class: 'menu-item', type: 'button', onClick: async () => { s.close(); const [nid] = await pickExercises({ multi: false, title: 'Substituir por…' }); if (!nid) return; if (nid === '__new__') return stageAndGo(`/exercicio/novo?w=${w.id}`); const n = store.newWorkoutItem(nid); Object.assign(it, { exerciseId: nid, sets: n.sets, reps: n.reps, load: n.load, rest: n.rest }); changed(); toast('Exercício substituído. Ajuste séries e carga se precisar.'); } }, h('span', { class: 'ico', html: icon('swap', 20) }), 'Substituir por outro exercício'),
+          h('a', { class: 'menu-item', href: `#/exercicio/${it.exerciseId}?w=${w.id}&i=${it.id}`, onClick: (e) => { e.preventDefault(); s.close(); stageAndGo(`/exercicio/${it.exerciseId}?w=${w.id}&i=${it.id}`); } }, h('span', { class: 'ico', html: icon('film', 20) }), 'Ver animação e histórico'),
+          h('button', { class: 'menu-item danger', type: 'button', onClick: () => { s.close(); w.items = w.items.filter((x) => x.id !== it.id); changed(); } }, h('span', { class: 'ico', html: icon('trash', 20) }), 'Remover do treino')),
       ],
-      footer: [btn('Cancelar', { kind: 'secondary', onClick: () => s.close() }), btn('Salvar', { onClick: async () => { Object.assign(it, { sets: sSets.get(), reps: sReps.get(), load: sLoad.get(), rest: sRest.get(), notes: notes.value.trim() }); s.close(); await persist(); draw(); } })],
+      footer: [btn('Descartar', { kind: 'secondary', onClick: () => s.close() }), btn('Salvar', { onClick: () => { Object.assign(it, { sets: sSets.get(), reps: sReps.get(), load: sLoad.get(), rest: sRest.get(), notes: notes.value.trim() }); s.close(); changed(); } })],
     });
   }
   draw();
 
+  async function quietSave() {
+    if (!w.name.trim()) { toast('Dê um nome ao treino.'); name.focus(); return false; }
+    w = store.clone(await store.saveWorkout({ ...w, name: w.name.trim(), description: (w.description || '').trim() }));
+    return true;
+  }
+  const ed = editScreen({
+    root, base: st?.base, read: () => keyOf(w), save: quietSave,
+    saved: () => { toast('Treino salvo.'); app.navigate('/treinos'); },
+    discard: () => app.navigate('/treinos'),
+  });
   root.appendChild(h('div', { class: 'row', style: { marginTop: '22px' } },
-    btn('Iniciar treino', { ic: 'play', cls: 'grow', onClick: async () => { if (!w.items.length) return toast('Adicione exercícios primeiro.'); await persist(); app.startSession(w.id); } }),
-    btn('', { kind: 'secondary', ic: 'copy', aria: 'Duplicar treino', onClick: async () => { await persist(); await store.duplicateWorkout(w.id); toast('Treino duplicado.'); app.navigate('/treinos'); } }),
-    btn('', { kind: 'danger', ic: 'trash', aria: 'Excluir treino', onClick: async () => { if (!saved) return app.navigate('/treinos'); await delWorkout(w); app.navigate('/treinos'); } })));
+    btn('Iniciar treino', { ic: 'play', cls: 'grow', onClick: async () => { if (!w.items.length) return toast('Adicione exercícios primeiro.'); if (await ed.save()) app.startSession(w.id); } }),
+    btn('', { kind: 'secondary', ic: 'copy', aria: 'Duplicar treino', onClick: async () => { if (!(await ed.save())) return; await store.duplicateWorkout(w.id); toast('Treino duplicado.'); app.navigate('/treinos'); } }),
+    btn('', { kind: 'danger', ic: 'trash', aria: 'Excluir treino', onClick: async () => {
+      if (existed() && !(await delWorkout(w))) return;
+      ed.guard.release(); app.navigate('/treinos');
+    } })));
+  root.appendChild(ed.bar);
   return root;
 }
 
@@ -179,7 +207,7 @@ export function workoutEditorView([id]) {
 export function importSheet() {
   const ta = textArea('', { rows: 9, placeholder: 'Treino A - Pernas\nLeg press 4x12 80kg 90s\nCadeira extensora 3x15 30kg\n\nTreino B\nSupino na máquina 3x10 25kg\nPuxada alta 3x12' });
   const s = openSheet({
-    title: 'Importar lista de texto', className: 'tall',
+    title: 'Importar lista de texto', className: 'tall', guard: () => ta.value.trim().length > 0,
     body: [h('p', { class: 'muted', style: { marginBottom: '10px' } }, 'Cole sua lista atual. O app identifica treinos (Treino A, B…), séries × repetições, carga (kg) e descanso (s ou min) e associa aos exercícios da biblioteca. Você revisa tudo antes de importar e pode editar depois.'), ta],
     footer: [btn('Cancelar', { kind: 'secondary', onClick: () => s.close() }), btn('Revisar', { onClick: () => { const parsed = parseWorkoutText(ta.value); if (!parsed.length) return toast('Não encontrei exercícios no texto.'); s.close(); previewImport(parsed); } })],
   });

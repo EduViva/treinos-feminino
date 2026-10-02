@@ -101,10 +101,9 @@ media = await ev(async (id) => (await import('/js/store.js')).listMedia(id), exI
 ok(media.length === 1, 'mídia excluída');
 
 // ---------------------------------------------------------------- editor de treino
-step('3. Criar treino, adicionar, reordenar, editar, substituir, duplicar');
+step('3. Criar treino, adicionar, reordenar, editar, substituir, salvar, duplicar');
 await page.goto(BASE + '#/treino/novo'); await page.waitForSelector('input[aria-label="Nome do treino"]');
 await page.getByLabel('Nome do treino').fill('Treino D');
-await page.getByLabel('Nome do treino').blur();
 await tap('Adicionar exercícios');
 await page.waitForSelector('.sheet .li');
 await pick('cadeira extensora', 'Cadeira extensora');
@@ -113,19 +112,20 @@ await pick('prancha abdominal', 'Prancha abdominal');
 await tap('Adicionar (3)');
 await page.waitForSelector('.ex-row');
 ok(await page.locator('.ex-row').count() === 3, '3 exercícios adicionados');
+ok(!(await ev(async () => (await import('/js/store.js')).state.workouts.some((w) => w.name === 'Treino D'))), 'nada é gravado antes de apertar “Salvar”: as alterações ficam só na tela');
+const exNames = () => page.locator('.ex-row .meta b').allInnerTexts();
 await page.locator('.ex-row').first().getByRole('button', { name: 'Mover para baixo' }).click();
-await wait(300);
-const order = await ev(async () => (await import('/js/store.js')).state.workouts.find((w) => w.name === 'Treino D').items.map((i) => i.exerciseId));
-ok(order[0] === ID['ex-abdutora'] && order[1] === ID['ex-extensora'], 'reordenar exercícios (mover para baixo)');
-// editar item (séries, reps, carga, descanso)
+await wait(200);
+ok(/Cadeira abdutora/.test((await exNames())[0]) && /Cadeira extensora/.test((await exNames())[1]), 'reordenar exercícios (mover para baixo)');
+// editar item (séries, reps, carga, descanso): a folha também tem Descartar | Salvar
 await page.locator('.ex-row .meta').first().click();
 await page.waitForSelector('.sheet .stepper');
+ok(await page.locator('.sheet').getByRole('button', { name: 'Descartar', exact: true }).count() === 1 && await page.locator('.sheet').getByRole('button', { name: 'Salvar', exact: true }).count() === 1, 'a folha de edição do exercício tem “Descartar” e “Salvar”');
 const setStepper = async (idx, val) => { await page.locator('.sheet .stepper-val').nth(idx).click(); await page.locator('.sheet .stepper-input').fill(String(val)); await page.locator('.sheet .stepper-input').press('Enter'); };
 await setStepper(0, 4); await setStepper(1, 8); await setStepper(2, 30); await setStepper(3, 60);
-await tap('Salvar', { exact: true });
+await page.locator('.sheet').getByRole('button', { name: 'Salvar', exact: true }).click();
 await wait(300);
-let itD = await ev(async () => (await import('/js/store.js')).state.workouts.find((w) => w.name === 'Treino D').items[0]);
-ok(itD.sets === 4 && itD.reps === 8 && itD.load === 30 && itD.rest === 60, 'item editado: 4 × 8, 30 kg, 60 s');
+ok(/4 × 8/.test(await page.locator('.ex-row .meta span').first().innerText()) && /30 kg/.test(await page.locator('.ex-row .meta span').first().innerText()), 'item editado: 4 × 8, 30 kg (na tela)');
 // substituir
 await page.locator('.ex-row .meta').nth(1).click();
 await page.getByRole('button', { name: /Substituir por outro exercício/ }).click();
@@ -133,15 +133,21 @@ await page.waitForSelector('.sheet .li');
 await page.locator('.sheet input[aria-label="Buscar exercício"]').fill('meu leg press');
 await page.locator('.sheet .finder-list .li', { hasText: 'Meu leg press 45' }).first().click();
 await wait(400);
-const items2 = await ev(async () => (await import('/js/store.js')).state.workouts.find((w) => w.name === 'Treino D').items.map((i) => i.exerciseId));
-ok(items2[1] === exId, 'exercício substituído por outro');
+ok(/Meu leg press 45/.test((await exNames())[1]), 'exercício substituído por outro');
 // remover
 await page.locator('.ex-row .meta').nth(2).click();
 await page.getByRole('button', { name: /Remover do treino/ }).click();
 await wait(300);
 ok(await page.locator('.ex-row').count() === 2, 'exercício removido do treino');
 await shot('21-editor');
-// duplicar
+ok(await page.locator('.editbar .eb-note').innerText() === 'Alterações não salvas', 'a barra avisa “Alterações não salvas”');
+await page.locator('.editbar').getByRole('button', { name: 'Salvar', exact: true }).click();
+await page.waitForSelector('.wk-card');
+const wD = await ev(async () => { const w = (await import('/js/store.js')).state.workouts.find((x) => x.name === 'Treino D'); return w && w.items.map((i) => [i.exerciseId, i.sets, i.reps, i.load, i.rest]); });
+ok(wD && wD.length === 2 && wD[0][0] === ID['ex-abdutora'] && wD[0].slice(1).join() === '4,8,30,60' && wD[1][0] === exId, 'ao salvar: gravado com a ordem, as séries/carga editadas, a troca e a remoção');
+// duplicar (a partir do editor)
+await page.locator('.wk-card').filter({ has: page.getByRole('heading', { name: 'Treino D', exact: true }) }).getByRole('button', { name: 'Editar' }).click();
+await page.waitForSelector('input[aria-label="Nome do treino"]');
 await page.locator('button[aria-label="Duplicar treino"]').click();
 await page.waitForSelector('.wk-card');
 const nw = await ev(async () => (await import('/js/store.js')).state.workouts.map((w) => w.name));
@@ -153,7 +159,6 @@ await page.goto(BASE + '#/treinos'); await page.waitForSelector('.wk-card');
 console.log('   ordem dos cartões:', JSON.stringify(await page.locator('.wk-card h3').allInnerTexts()));
 await page.locator('.wk-card').filter({ has: page.getByRole('heading', { name: 'Treino D', exact: true }) }).getByRole('button', { name: 'Iniciar treino' }).click();
 await page.waitForSelector('.sess');
-await tap('Iniciar exercício');
 await page.locator('.s-set button.cell').first().click();
 await page.waitForSelector('.sheet .stepper');
 await page.locator('.sheet .stepper-val').first().click();
@@ -164,7 +169,7 @@ await wait(400);
 const dw = await ev(async () => (await import('/js/store.js')).state.workouts.find((w) => w.name === 'Treino D').items[0].load);
 console.log('   sessão do treino:', (await ev(async () => (await import('/js/store.js')).state.sessions.at(-1).workoutName)), JSON.stringify(await ev(async () => (await import('/js/store.js')).state.workouts.map((w) => [w.name, w.items[0]?.load]))));
 ok(dw === 35, 'NOVO PADRÃO: plano do treino agora tem 35 kg');
-await tap('Iniciar série'); await wait(300); await tap('Terminei'); await page.waitForSelector('.ring'); await tap('Pular descanso');
+await tap('Iniciar série'); await wait(300); await page.getByRole('button', { name: /^(Descansar|Terminei)$/ }).click(); await page.waitForSelector('.ring'); await tap('Pular descanso');
 await page.getByRole('button', { name: 'Menu do treino' }).click();
 await page.getByRole('button', { name: /Finalizar treino agora/ }).click();
 await page.getByRole('button', { name: 'Finalizar', exact: true }).click();
@@ -174,6 +179,33 @@ await page.waitForSelector('.sess', { state: 'detached' }); // o handler é ass�
 await page.waitForSelector('.next-card');
 const ss = await ev(async () => (await import('/js/store.js')).state.sessions.at(-1));
 ok(ss.exercises[0].changes.at(-1).scope === 'default' && ss.exercises[0].planned.load === 30 && ss.exercises[0].sets[0].load === 35, 'registro: planejado era 30, mudança marcada como “novo padrão”, realizado 35');
+
+// ---------------------------------------------------------------- por tempo × por repetição
+step('4b. Exercício por TEMPO mantém cronômetro e “Terminei”; na última série do treino não há descanso');
+await ev(async () => {
+  const s = await import('/js/store.js');
+  const timed = [...s.state.exercises.values()].find((e) => e.repUnit === 'seg' && !e.archived);
+  const reps = [...s.state.exercises.values()].find((e) => e.repUnit === 'reps' && !e.bodyweight && !e.archived);
+  const mk = (name, items) => { const w = s.blankWorkout(); w.name = name; w.items = items; return s.saveWorkout(w); };
+  await mk('Teste tempo', [s.newWorkoutItem(timed.id, { sets: 2, reps: 30, rest: 20 }), s.newWorkoutItem(reps.id, { sets: 1 })]);
+  await mk('Teste última série', [s.newWorkoutItem(reps.id, { sets: 1 })]);
+});
+const startByName = async (name) => { await page.goto(BASE + '#/treinos'); await page.waitForSelector('.wk-card'); await page.locator('.wk-card').filter({ has: page.getByRole('heading', { name, exact: true }) }).getByRole('button', { name: 'Iniciar treino' }).click(); await page.waitForSelector('.sess'); };
+const discardSession = async () => { await page.getByRole('button', { name: 'Menu do treino' }).click(); await page.getByRole('button', { name: /Descartar este treino/ }).click(); await page.locator('.sheet').getByRole('button', { name: 'Descartar', exact: true }).click(); await wait(400); };
+await startByName('Teste tempo');
+await tap('Iniciar série'); await wait(1200);
+ok(await page.locator('.timer-big').count() === 1 && /TEMPO RESTANTE/.test(await page.locator('.timer-label').innerText()), 'exercício por tempo: o cronômetro (contagem regressiva) aparece');
+ok(await page.getByRole('button', { name: 'Terminei', exact: true }).count() === 1 && await page.getByRole('button', { name: 'Descansar', exact: true }).count() === 0, 'exercício por tempo: o botão continua “Terminei”');
+await tap('Terminei'); await page.waitForSelector('.ring');
+ok(true, 'terminar a série por tempo inicia o descanso');
+await discardSession();
+await startByName('Teste última série');
+await tap('Iniciar série'); await wait(300);
+ok(await page.getByRole('button', { name: 'Terminei', exact: true }).count() === 1 && await page.getByRole('button', { name: 'Descansar', exact: true }).count() === 0, 'última série do treino: continua “Terminei” (não há descanso depois)');
+await tap('Terminei');
+await page.waitForSelector('text=Finalizar treino');
+ok(await page.locator('.ring').count() === 0, 'depois da última série vai direto para “Finalizar treino” (sem descanso)');
+await discardSession();
 
 // ---------------------------------------------------------------- importar texto
 step('5. Importar lista de texto (treino atual da usuária)');

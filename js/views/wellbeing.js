@@ -4,6 +4,7 @@ import { h, clear, dateKey, parseKey, addDays, fmtNum, fmtDate, fmtDateLong, sum
 import * as store from '../store.js';
 import { app } from '../app.js';
 import { btn, icon, iconBtn, chips, iconScale, registerIcons, textArea, toast, pageHead } from '../ui.js';
+import { editScreen } from '../edit.js';
 import { timeChart } from '../charts.js';
 import { PERIODS, periodRange, inRange, sessionTotals, cycleStarts, cycleDayOn, avgCycleLength } from '../stats.js';
 import { WB_ICONS, WB_SCALES, WB_PERIOD, WB_NOTE } from '../data/wellbeing.js';
@@ -55,23 +56,37 @@ export function wellbeingView() {
     const isToday = date === dateKey();
     const note = textArea(draft.note || '', { placeholder: 'Observações (sono, alimentação, dor, estresse…)', 'aria-labelledby': `wq-${WB_NOTE.key}` });
     note.addEventListener('input', () => { draft.note = note.value; });
-    formHost.appendChild(h('div', { class: 'wq-list' },
+    // trocar de dia com alterações não salvas: pergunta (salvar / descartar / continuar)
+    const goTo = async (d) => { if (await ed.leave()) { date = d; drawForm(); } };
+    const trash = btn('', { kind: 'danger', ic: 'trash', cls: 'icon-only', aria: 'Apagar registro do dia', onClick: async () => { await store.deleteWellbeing(date); toast('Registro apagado.'); drawForm(); drawCompare(); } });
+    trash.hidden = !st.wellbeing.has(date);
+    const wrap = h('div', { class: 'wq-list' },
       h('div', { class: 'card' },
         h('div', { class: 'cal-head', style: { marginBottom: 0 } },
-          iconBtn('left', 'Dia anterior', () => { date = dateKey(addDays(parseKey(date), -1)); drawForm(); }),
-          h('div', { style: { textAlign: 'center' } }, h('b', null, isToday ? 'Hoje' : fmtDateLong(parseKey(date))), isToday ? h('div', { class: 'muted', style: { fontSize: '13px' } }, fmtDateLong(parseKey(date))) : h('button', { class: 'link', type: 'button', onClick: () => { date = dateKey(); drawForm(); } }, 'Ir para hoje')),
-          iconBtn('right', 'Próximo dia', () => { if (date < dateKey()) { date = dateKey(addDays(parseKey(date), 1)); drawForm(); } }))),
+          iconBtn('left', 'Dia anterior', () => goTo(dateKey(addDays(parseKey(date), -1)))),
+          h('div', { style: { textAlign: 'center' } }, h('b', null, isToday ? 'Hoje' : fmtDateLong(parseKey(date))), isToday ? h('div', { class: 'muted', style: { fontSize: '13px' } }, fmtDateLong(parseKey(date))) : h('button', { class: 'link', type: 'button', onClick: () => goTo(dateKey()) }, 'Ir para hoje')),
+          iconBtn('right', 'Próximo dia', () => { if (date < dateKey()) goTo(dateKey(addDays(parseKey(date), 1))); }))),
       periodPanel(draft),
       WB_SCALES.map((def) => panel(def, iconScale({ options: def.options, value: draft[def.key], labelledBy: `wq-${def.key}`, onChange: (v) => { draft[def.key] = v; } }))),
-      panel(WB_NOTE, note),
-      h('div', { class: 'row wq-actions' }, btn('Salvar', { cls: 'grow', onClick: async () => {
+      panel(WB_NOTE, note));
+    const ed = editScreen({
+      root: wrap, inline: true, extra: trash,
+      read: () => JSON.stringify([!!draft.period, !!draft.cycleStart, draft.flow ?? null, draft.mood ?? null, draft.energy ?? null, draft.tiredness ?? null, draft.fatigue ?? null, draft.recovery ?? null, (draft.note || '').trim()]),
+      save: async () => {
         const rec = { ...draft, date };
         const has = rec.period || rec.mood || rec.energy || rec.tiredness || rec.fatigue || rec.recovery || (rec.note || '').trim();
-        if (!has) { if (store.state.wellbeing.has(date)) await store.deleteWellbeing(date); toast('Nada para salvar.'); return; }
+        if (!has) {
+          if (store.state.wellbeing.has(date)) { await store.deleteWellbeing(date); toast('Registro do dia apagado.'); drawCompare(); } else toast('Nada para salvar.');
+          return true;
+        }
         await store.saveWellbeing(rec); toast('Bem-estar salvo.'); drawCompare();
-      } }),
-        store.state.wellbeing.has(date) ? btn('', { kind: 'danger', ic: 'trash', aria: 'Apagar registro do dia', onClick: async () => { await store.deleteWellbeing(date); toast('Registro apagado.'); drawForm(); drawCompare(); } }) : null),
-      h('p', { class: 'disclaimer', style: { marginTop: 0 } }, 'Registros pessoais, guardados só na sua conta. Isto não é um diagnóstico nem uma orientação médica.')));
+        return true;
+      },
+      saved: () => { trash.hidden = !store.state.wellbeing.has(date); },
+      discard: () => drawForm(),
+    });
+    wrap.append(ed.bar, h('p', { class: 'disclaimer', style: { marginTop: 0 } }, 'Registros pessoais, guardados só na sua conta. Isto não é um diagnóstico nem uma orientação médica.'));
+    formHost.appendChild(wrap);
   }
 
   function drawCompare() {

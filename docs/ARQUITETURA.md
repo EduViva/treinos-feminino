@@ -37,6 +37,7 @@ js/
     engine.js                    outbox, envio idempotente, pull incremental, mídia, backoff, status
     mappers.js                   modelo do app ⇄ linhas do Postgres
     uuid.js                      uuid v4/v5 (ids determinísticos do catálogo)
+  edit.js                        telas de edição: "Descartar | Salvar", detecção de alterações, aviso ao sair sem salvar
   legacy.js                      importa os dados da versão antiga (sem conta) para a conta
   search.js                      busca por relevância (sem acento, sinônimos, filtros, favoritos)
   data/taxonomy.js               grupos, equipamentos, tipos, níveis, papéis e permissões (fonte única)
@@ -158,11 +159,14 @@ treinos, sessões, atividades, bem-estar, pesos, exercícios próprios e mídias
 ## 4. Modo treino (máquina de estados — `session.js`)
 
 ```
+Iniciar treino ──▶ READY (1º exercício já iniciado)
 OVERVIEW ⇄ INTRO → READY → RUNNING → REST ─┬→ READY (próxima série)
                                            ├→ INTRO (próximo exercício)
                                            └→ FINISH → SUMMARY (salva no histórico)
 ```
 
+* **“Iniciar treino” já inicia o 1º exercício** (`Session.begin()`): vai direto para a série 1, sem passar por “Iniciar exercício”. Como a apresentação (INTRO) é pulada, a 1ª série mostra o que ela mostraria: sugestão de progressão, observação e “Como fazer”. Entre exercícios a INTRO continua (é o momento de ir ao aparelho). Com “Iniciar a série automaticamente” ligado, o treino começa já na série em andamento.
+* **Série em andamento (RUNNING):** exercício **por tempo** (prancha, alongamento, cardio) mostra a contagem regressiva e o botão **“Terminei”**; exercício **por repetição** não mostra cronômetro (o tempo da série continua sendo gravado) e o botão é **“Descansar”**, que encerra a série e começa o descanso. Na **última série do treino** não há descanso (`Session.finishesWorkout`), então o botão continua “Terminei” e a tela seguinte é “Finalizar treino”.
 * Rascunho salvo a cada evento (`kv.activeSession`) → reabrir o app retoma exatamente de onde parou.
 * Descanso: `endsAt` em timestamp; `+15s`, `+30s`, `EDITAR`, `PULAR`; ao zerar: flash + som + vibração; o tempo **realmente** descansado é gravado (`restActual`).
 * Tela ligada durante o treino (Screen Wake Lock, configurável).
@@ -196,6 +200,21 @@ Cada pergunta é um painel com a **sua cor pastel** (`css/app.css`, `.wq[data-hu
 A cor só identifica a *pergunta*; a *resposta* é a forma do ícone (rosto, bateria que enche, olho que fecha, medidor, anel, gotas), e o botão escolhido muda de "claro" para "cheio", então nada depende só da cor.
 O E2E mede o contraste renderizado nos dois temas (rótulo escolhido ≥ 4,5:1, ícones ≥ 3:1, títulos ≥ 4,5:1).
 
+## 6c. Telas de edição (Salvar / Descartar)
+
+Toda tela em que se muda algo tem **Descartar** e **Salvar** à vista e **nada é gravado antes de salvar**:
+
+| Tela | Como funciona |
+|---|---|
+| Editor de treino, editor de exercício | barra fixa acima do menu (`js/edit.js`); as mudanças ficam num rascunho na tela; Salvar grava e volta para a lista; Descartar volta sem gravar |
+| Perfil (“Seus dados”), Bem-estar | “inline”: Salvar/Descartar só ficam ativos quando há alterações; Descartar recarrega o que estava salvo; no Bem-estar, trocar de dia com alterações pergunta antes |
+| Folhas (atividade, peso, exercício do treino, “Ajustar” do treino, descanso) | rodapé com Descartar | Salvar (ou Aplicar); fechar no X, no fundo ou com Esc, **com dados digitados**, pede confirmação (`openSheet({ guard })`) |
+| Resultado da série (descanso) e resumo do treino | rascunho + Descartar | Salvar; o resumo mostra “Descartar alterações” quando a sensação/observação foi mexida (o treino já está no histórico) |
+
+* **Aviso ao sair** — `editScreen()` registra `app.guard`; como toda navegação do app é por hash (abas, setas de voltar, `app.navigate`, botão voltar do aparelho), o roteador (`main.js`) intercepta o `hashchange`: com alterações, volta para a tela (`history.go`, sem bagunçar o histórico) e pergunta **Salvar / Descartar / Continuar editando**. `beforeunload` cobre fechar a aba. A sincronização não recria a tela enquanto há alterações.
+* **Rascunho que atravessa telas** — no editor de treino, “Criar exercício” e “Ver animação” guardam o rascunho em memória (`app.stagedWorkout`) e o editor o retoma na volta; o exercício criado entra no rascunho, não no treino salvo.
+* Preferências do Perfil (interruptores, descanso padrão, tema) continuam valendo na hora, como configurações.
+
 ## 7. Offline
 
 `sw.js` pré-carrega todos os arquivos (`scripts/stamp-sw.mjs` gera a lista + versão por hash). Cache-first, sem chamadas a terceiros. Nova versão → instalada em segundo plano e usada na próxima abertura.
@@ -222,7 +241,7 @@ Os dados já ficam na conta. O backup em arquivo continua disponível como **có
 |---|---|---|
 | Unitários | `npm test` | progressão, estatísticas, importador, catálogo (dados válidos), seed em dia, busca, mappers, importação de dados antigos |
 | Segurança no banco | `npm run db:test` | RLS/RBAC/Storage: aluna A × B, instrutor vinculado × não vinculado, escopos, admin, catálogo somente leitura, `erase_my_data` |
-| E2E | `npm run e2e` | `run`/`run2` (fluxos originais do app, adaptados), `cloud` (login, sincronização, offline, dois aparelhos, **segunda usuária só vê o que é dela**), `legacy` (migração de dados antigos) |
+| E2E | `npm run e2e` | `run`/`run2` (fluxos originais do app, adaptados), `edit` (Salvar/Descartar em todas as telas, aviso ao sair, rascunho do treino), `cloud` (login, sincronização, offline, dois aparelhos, **segunda usuária só vê o que é dela**), `legacy` (migração de dados antigos) |
 
 Os E2E usam um **Supabase simulado em processo** (`tests/e2e/fake-supabase.mjs`: Auth, REST com filtros do PostgREST, Storage,
 emulação de RLS e FKs) interceptando a rede do navegador — rápido, determinístico e sem tocar no banco real.

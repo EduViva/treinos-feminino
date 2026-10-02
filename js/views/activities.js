@@ -48,9 +48,11 @@ export function activitySheet({ date, activity, onSaved } = {}) {
   dur.addEventListener('input', updDerived); dist.addEventListener('input', updDerived);
   draw();
 
-  const foot = [btn('Cancelar', { kind: 'secondary', onClick: () => s.close() }), btn('Salvar', { onClick: save })];
+  const form = () => JSON.stringify([type, dateIn.value, timeIn.value, readNum(dur), readNum(dist), readNum(cal), custom.value.trim(), note.value.trim(), intensity]);
+  const initial = form();
+  const foot = [btn('Descartar', { kind: 'secondary', onClick: () => s.close() }), btn('Salvar', { onClick: save })];
   const s = openSheet({
-    title: activity ? 'Editar atividade' : 'Registrar atividade', className: 'tall',
+    title: activity ? 'Editar atividade' : 'Registrar atividade', className: 'tall', guard: () => form() !== initial,
     body: [field('Tipo', typeChips), h('div', { class: 'two' }, field('Data', dateIn), field('Hora', timeIn)), dynamic, field('Observações', note),
       activity ? btn('Excluir atividade', { kind: 'danger', block: true, onClick: async () => { if (await confirmDialog({ title: 'Excluir atividade?', message: 'Esta ação não pode ser desfeita.', confirmText: 'Excluir', danger: true })) { await store.deleteActivity(a.id); s.close(); toast('Atividade excluída.'); onSaved && onSaved(); } } }) : null],
     footer: foot,

@@ -66,7 +66,7 @@ async function render() {
   if (phase !== 'app') return;
   const token = ++renderToken;
   const { path, query } = parseHash();
-  if (!store.state.profile && path !== '/boas-vindas') { location.replace('#/boas-vindas'); return; }
+  if (!store.state.profile && path !== '/boas-vindas') { replacing = true; location.replace('#/boas-vindas'); return; }
   const view = $('#view');
   const scrollY = window.scrollY;
   let match = null;
@@ -75,6 +75,8 @@ async function render() {
     if (m) { match = { tab, fn, params: m.slice(1).map(decodeURIComponent) }; break; }
   }
   if (!match) match = { tab: 'inicio', fn: homeView, params: [] };
+  // o rascunho do treino em edição só vale na ida e volta "criar exercício / ver animação"
+  if (app.stagedWorkout && !(match.fn === workoutEditorView || (path.startsWith('/exercicio/') && query.w))) app.stagedWorkout = null;
   try {
     const node = await match.fn(match.params, query);
     if (token !== renderToken) { destroyTree(node); return; }
@@ -86,6 +88,7 @@ async function render() {
     if (app._keepScroll) { window.scrollTo(0, scrollY); app._keepScroll = false; } else window.scrollTo(0, 0);
   } catch (e) {
     console.error(e);
+    app.guard = null;
     clear(view);
     view.appendChild(h('div', { class: 'card' }, h('h3', null, 'Algo deu errado'), h('p', { class: 'muted' }, String(e.message || e))));
   }
@@ -123,7 +126,40 @@ async function registerSW() {
 
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); app.installPrompt = e; });
 window.addEventListener('appinstalled', () => { app.installPrompt = null; toast('App instalado!'); });
-window.addEventListener('hashchange', render);
+// ---------------------------------------------------------------- aviso ao sair com alterações não salvas
+// Toda navegação do app é por hash (abas, setas de voltar, app.navigate e o botão voltar do aparelho), então um
+// único ponto cobre tudo: se a tela atual tem alterações (app.guard), volta para ela com history.go() — sem
+// bagunçar o histórico — e pergunta o que fazer. Cada entrada do histórico recebe um número (idx) para saber
+// quantas posições andar.
+let navIdx = 0, restoring = null, replacing = false, asking = false;
+const idxOf = (st) => (st && Number.isInteger(st.idx) ? st.idx : null);
+function stampHistory(i) { try { history.replaceState({ ...(history.state || {}), idx: i }, ''); } catch { /* sem history API */ } navIdx = i; }
+stampHistory(idxOf(history.state) ?? 0);
+
+function onHashChange() {
+  if (restoring) { const r = restoring; restoring = null; r(); return; } // eco do history.go() que desfez a navegação
+  if (replacing) { replacing = false; stampHistory(navIdx); render(); return; }
+  const known = idxOf(history.state);
+  const to = known ?? navIdx + 1; // sem idx = entrada nova (clique em link, app.navigate)
+  const g = app.guard;
+  if (g && g.dirty() && to !== navIdx) {
+    if (asking) { restoring = () => {}; history.go(-(to - navIdx)); return; } // já há uma pergunta aberta: só volta para a tela
+    askBeforeLeaving(g, to - navIdx); return;
+  }
+  if (known === null) stampHistory(to); else navIdx = known;
+  render();
+}
+async function askBeforeLeaving(g, delta) {
+  asking = true;
+  try {
+    const back = new Promise((resolve) => { restoring = resolve; setTimeout(() => { if (restoring === resolve) { restoring = null; resolve(); } }, 700); });
+    history.go(-delta); // volta para a tela de edição
+    await back;
+    if (await g.beforeLeave()) { g.release(); history.go(delta); }
+  } finally { asking = false; }
+}
+window.addEventListener('hashchange', onHashChange);
+window.addEventListener('beforeunload', (e) => { if (app.guard && app.guard.dirty()) { e.preventDefault(); e.returnValue = ''; } });
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
 store.onChange((what) => {
   if (what === 'settings') applyTheme();
@@ -136,7 +172,7 @@ function maybeRerender() {
   if (phase !== 'app') return;
   const el = document.activeElement;
   const typing = el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
-  if (typing || document.querySelector('#sheet-root .sheet') || app.sessionActive) { dirty = true; return; }
+  if (typing || document.querySelector('#sheet-root .sheet') || app.sessionActive || (app.guard && app.guard.dirty())) { dirty = true; return; }
   dirty = false;
   app.rerender({ keepScroll: true });
 }

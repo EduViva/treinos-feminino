@@ -97,7 +97,11 @@ try {
   R.ok((await A.page.locator('.ex-row').count()) === 2, 'selecionou 2 exercícios → entram no treino');
   await A.page.locator('.ex-row .meta').first().click();
   await A.page.waitForSelector('.sheet .stepper');
-  await tap(A.page, 'Salvar');
+  await A.page.locator('.sheet').getByRole('button', { name: 'Salvar', exact: true }).click(); // folha do exercício (rascunho)
+  await A.page.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 4000 });
+  await A.page.waitForTimeout(1500);
+  R.ok(fake.db.workouts.length === 5, 'nada é enviado ao servidor antes de apertar “Salvar” no treino');
+  await A.page.locator('.editbar').getByRole('button', { name: 'Salvar', exact: true }).click();
   await waitFor(() => fake.db.workouts.length === 6, 9000, 'novo treino no servidor');
   const nw = fake.db.workouts.find((w) => w.name === 'Treino F' || /Treino/.test(w.name) && !['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'].includes(w.name));
   await waitFor(() => fake.db.workout_exercises.filter((i) => i.workout_id === nw.id).length === 2, 9000, 'itens do novo treino');
