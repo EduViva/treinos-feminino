@@ -3,6 +3,7 @@ name: Publicar app
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -11,7 +12,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -22,10 +23,30 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm test
+      - run: npm ci
+      - name: Catálogo e dados de referência estão em dia com as fontes
+        run: npm run catalog:check
+      - name: Testes unitários
+        run: npm test
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Playwright (só nos testes; não entra no app)
+        run: |
+          npm i --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: E2E em celular (Supabase simulado — não toca no banco real)
+        run: npm run e2e
 
   deploy:
-    needs: test
+    if: github.ref == 'refs/heads/main'
+    needs: [test, e2e]
     runs-on: ubuntu-latest
     environment:
       name: github-pages

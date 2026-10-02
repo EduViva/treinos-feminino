@@ -1,12 +1,14 @@
 // Biblioteca de exercícios, tela do exercício (animação + histórico + mídia) e edição.
-import { h, clear, fmtNum, fmtDur, fmtDate, fmtTime, norm, groupBy, isTimed, unitShort, unitLong } from '../util.js';
+import { h, clear, fmtNum, fmtDur, fmtDate, fmtTime, norm, groupBy, isTimed, unitShort, unitLong, uid } from '../util.js';
 import * as store from '../store.js';
 import { app } from '../app.js';
 import {
   btn, icon, iconBtn, pageHead, chips, field, textInput, textArea, selectInput, stepper, openSheet, confirmDialog, menuSheet, toast, empty, segmented,
 } from '../ui.js';
 import { exerciseVisual, exThumb, destroyTree, artFor } from '../visual.js';
-import { GROUPS, EQUIPMENT, KINDS, effortLabel } from '../data/seed.js';
+import { GROUPS, EQUIPMENT, KINDS, LEVELS, LEVEL_NAMES } from '../data/taxonomy.js';
+import { effortLabel } from '../data/seed.js';
+import { createFinder, exerciseMeta, starButton } from './finder.js';
 import { artKeys, artLabel } from '../figure/arts.js';
 import { thumbSvg } from '../figure/scene.js';
 import { exerciseEntries } from '../stats.js';
@@ -19,30 +21,18 @@ export function libraryView() {
   const root = h('div');
   root.appendChild(pageHead('Treinos', { sub: 'Planos e biblioteca de exercícios' }));
   root.appendChild(h('div', { style: { marginBottom: '14px' } }, libraryTabs('exercicios')));
-  let q = '', group = 'Todos', showArchived = false;
-  const search = h('div', { class: 'search' }, h('span', { class: 'ico', html: icon('search', 20) }),
-    h('input', { type: 'text', placeholder: 'Buscar exercício…', 'aria-label': 'Buscar exercício', onInput: (e) => { q = e.target.value; draw(); } }));
-  const present = [...new Set(store.listExercises().map((e) => e.group))];
-  const chipBar = chips({ options: ['Todos', ...GROUPS.filter((g) => present.includes(g))], value: 'Todos', cls: 'scroll', onChange: (v) => { group = v; draw(); } });
-  const list = h('div');
-  root.append(search, chipBar, list);
-
-  function draw() {
-    clear(list);
-    const items = store.listExercises({ archived: showArchived }).filter((e) => (group === 'Todos' || e.group === group) && (!q || norm(e.name).includes(norm(q)) || norm(e.equipment).includes(norm(q))));
-    if (!items.length) { list.appendChild(empty({ icon: 'search', title: 'Nenhum exercício encontrado', text: 'Ajuste a busca ou crie um novo exercício.' })); return; }
-    for (const [g, arr] of groupBy(items, (e) => e.group)) {
-      list.appendChild(h('div', { class: 'group-h' }, g));
-      list.appendChild(h('div', { class: 'list' }, arr.map((e) => h('a', { class: 'li', href: `#/exercicio/${e.id}` },
-        exThumb(e), h('div', { class: 'grow' }, h('div', { class: 't' }, e.name), h('div', { class: 's' }, [e.kind && e.kind !== 'forca' ? KINDS[e.kind] : null, e.equipment, artFor(e) ? 'com animação' : (store.listMedia(e.id).length ? 'com mídia própria' : 'sem mídia')].filter(Boolean).join(' · '))),
-        e.archived ? h('span', { class: 'badge warn' }, 'Arquivado') : null,
-        h('span', { class: 'end', html: icon('right', 18) })))));
-    }
-  }
-  draw();
+  let showArchived = false;
+  const goNew = (q) => app.navigate(`/exercicio/novo${q ? `?nome=${encodeURIComponent(q)}` : ''}`);
+  const finder = createFinder({
+    key: 'lib', page: true, grouped: true, getList: () => store.listExercises({ archived: showArchived }), onCreate: goNew,
+    renderRow: (e, { star }) => h('a', { class: 'li', href: `#/exercicio/${e.id}` },
+      exThumb(e), h('div', { class: 'grow' }, h('div', { class: 't' }, e.name), exerciseMeta(e, { media: true })),
+      e.archived ? h('span', { class: 'badge warn' }, 'Arquivado') : null, star(), h('span', { class: 'end', html: icon('right', 18) })),
+  });
+  root.appendChild(finder.node);
   const archivedCount = store.listExercises({ archived: true }).filter((e) => e.archived).length;
-  if (archivedCount) root.appendChild(h('button', { class: 'link', style: { marginTop: '14px' }, onClick: () => { showArchived = !showArchived; draw(); } }, `${showArchived ? 'Ocultar' : 'Mostrar'} arquivados (${archivedCount})`));
-  root.appendChild(btn('Novo exercício', { ic: 'plus', cls: 'fab', onClick: () => app.navigate('/exercicio/novo') }));
+  if (archivedCount) root.appendChild(h('button', { class: 'link', style: { marginTop: '14px' }, onClick: (ev) => { showArchived = !showArchived; ev.currentTarget.textContent = `${showArchived ? 'Ocultar' : 'Mostrar'} arquivados (${archivedCount})`; finder.redraw(); } }, `Mostrar arquivados (${archivedCount})`));
+  root.appendChild(btn('Novo exercício', { ic: 'plus', cls: 'fab', onClick: () => goNew('') }));
   return root;
 }
 
@@ -55,12 +45,17 @@ export function exerciseView([id], query) {
   const root = h('div');
   root.appendChild(pageHead(ex.name, {
     back: () => (history.length > 1 ? history.back() : app.navigate('/exercicios')),
-    sub: [ex.group, ex.equipment].filter(Boolean).join(' · '),
-    right: iconBtn('more', 'Mais ações', () => menuSheet(ex.name, [
-      { icon: 'edit', label: 'Editar exercício', onClick: () => app.navigate(`/exercicio/${ex.id}/editar`) },
-      { icon: 'copy', label: 'Duplicar exercício', onClick: () => duplicate(ex) },
-      { icon: 'trash', label: store.exerciseHasHistory(ex.id) ? 'Arquivar (histórico é mantido)' : 'Excluir exercício', danger: true, onClick: () => removeEx(ex) },
-    ])),
+    sub: [ex.group, ex.equipment, LEVEL_NAMES[ex.level]].filter(Boolean).join(' · '),
+    right: h('div', { class: 'row', style: { gap: 0 } }, starButton(ex, () => app.rerender()),
+      iconBtn('more', 'Mais ações', () => menuSheet(ex.name, ex.builtin ? [
+        { icon: 'edit', label: 'Ajustar meus padrões e observações', onClick: () => app.navigate(`/exercicio/${ex.id}/editar`) },
+        { icon: 'copy', label: 'Criar minha versão deste exercício', onClick: () => duplicate(ex) },
+        { icon: 'trash', label: 'Arquivar (some das minhas listas)', danger: true, onClick: () => removeEx(ex) },
+      ] : [
+        { icon: 'edit', label: 'Editar exercício', onClick: () => app.navigate(`/exercicio/${ex.id}/editar`) },
+        { icon: 'copy', label: 'Duplicar exercício', onClick: () => duplicate(ex) },
+        { icon: 'trash', label: store.exerciseHasHistory(ex.id) ? 'Arquivar (histórico é mantido)' : 'Excluir exercício', danger: true, onClick: () => removeEx(ex) },
+      ]))),
   }));
 
   // animação / mídia
@@ -73,6 +68,7 @@ export function exerciseView([id], query) {
   mrow.appendChild(h('span', { class: 'mchip' }, ex.group));
   for (const s of ex.secondary || []) if (s !== ex.group) mrow.appendChild(h('span', { class: 'mchip sec' }, s));
   root.appendChild(mrow);
+  if (ex.aliases?.length) root.appendChild(h('p', { class: 'aka' }, h('b', null, 'Também conhecido como: '), ex.aliases.join(' · ')));
 
   // planejado
   root.appendChild(h('div', { class: 'card', style: { marginTop: '14px' } },
@@ -83,6 +79,7 @@ export function exerciseView([id], query) {
       h('div', { class: 'cell' }, h('b', null, setsRepsText(ex, plan)), h('span', null, isTimed(ex.repUnit) ? 'Séries × tempo' : 'Séries × reps')),
       h('div', { class: 'cell' }, h('b', null, restText(plan.rest)), h('span', null, 'Descanso'))),
     ex.instructions?.length ? h('ol', { class: 'steps' }, ex.instructions.map((s) => h('li', null, s))) : null,
+    ex.tips?.length ? h('div', { class: 'tips' }, h('b', null, 'Dicas de execução'), ex.tips.length === 1 ? h('span', null, ex.tips[0]) : h('ul', { style: { margin: 0, paddingLeft: '18px' } }, ex.tips.map((t) => h('li', null, t)))) : null,
     ex.notes ? h('p', { class: 'muted', style: { marginTop: '10px' } }, h('b', null, 'Observações: '), ex.notes) : null));
 
   // progressão
@@ -99,20 +96,25 @@ export function exerciseView([id], query) {
   return root;
 }
 
+// Cria uma versão PESSOAL (o exercício original — do catálogo ou de outra pessoa — nunca é alterado).
 async function duplicate(ex) {
-  const copy = { ...store.clone(ex), id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()), name: `${ex.name} (cópia)`, builtin: false };
+  const copy = {
+    ...store.clone(ex), id: uid(), slug: null, name: ex.builtin ? `${ex.name} (minha versão)` : `${ex.name} (cópia)`,
+    builtin: false, origin: 'custom', ownerId: store.state.userId, visibility: 'private', parentId: ex.builtin ? ex.id : (ex.parentId || null),
+    favorite: false, archived: false, inactive: false, createdAt: undefined, updatedAt: undefined,
+  };
   const saved = await store.saveExercise(copy);
-  toast('Exercício duplicado.');
+  toast(ex.builtin ? 'Sua versão foi criada. Ajuste o que quiser.' : 'Exercício duplicado.');
   app.navigate(`/exercicio/${saved.id}/editar`);
 }
 async function removeEx(ex) {
   const hist = store.exerciseHasHistory(ex.id);
   const inWk = store.state.workouts.filter((w) => w.items.some((i) => i.exerciseId === ex.id));
   const ok = await confirmDialog({
-    title: hist ? 'Arquivar exercício?' : 'Excluir exercício?',
-    message: (hist ? 'Este exercício tem histórico. Ele será arquivado: some das listas novas, mas todo o histórico continua intacto.' : 'Esta ação não pode ser desfeita.') +
+    title: ex.builtin || hist ? 'Arquivar exercício?' : 'Excluir exercício?',
+    message: (ex.builtin ? 'Este exercício é do catálogo e continua existindo para todos. Ele só deixa de aparecer nas suas listas (você pode mostrá-lo de novo em “Mostrar arquivados”).' : hist ? 'Este exercício tem histórico. Ele será arquivado: some das listas novas, mas todo o histórico continua intacto.' : 'Esta ação não pode ser desfeita.') +
       (inWk.length ? `\n\nEle também está em: ${inWk.map((w) => w.name).join(', ')}. Os treinos mantêm o item até você editá-los.` : ''),
-    confirmText: hist ? 'Arquivar' : 'Excluir', danger: true,
+    confirmText: ex.builtin || hist ? 'Arquivar' : 'Excluir', danger: true,
   });
   if (!ok) return;
   const r = await store.removeExercise(ex.id);
@@ -216,7 +218,7 @@ function mediaManager(ex) {
         if (m.kind === 'video') tile.appendChild(h('span', { class: 'vid' }, 'vídeo'));
       });
     }
-    if (!list.length) grid.appendChild(h('p', { class: 'muted', style: { gridColumn: '1 / -1' } }, 'Adicione fotos ou vídeos do aparelho/execução. Eles ficam só neste aparelho e podem ser trocados sem afetar o histórico.'));
+    if (!list.length) grid.appendChild(h('p', { class: 'muted', style: { gridColumn: '1 / -1' } }, 'Adicione fotos ou vídeos do aparelho/execução. Ficam guardados só na sua conta (ninguém mais vê) e podem ser trocados sem afetar o histórico.'));
   }
   function tileMenu(m) {
     menuSheet('Minha mídia', [
@@ -242,23 +244,31 @@ function mediaManager(ex) {
 }
 
 // ================= Criar / editar =================
+// Exercício do CATÁLOGO: nada nele muda — só os padrões e observações PESSOAIS (a usuária pode criar a "sua versão").
+// Exercício PRÓPRIO: tudo é editável.
 export function exerciseEditView([id], query) {
   const isNew = id === 'novo';
   const base = isNew ? store.blankExercise() : store.clone(store.getExercise(id));
   if (!base) return h('div', null, pageHead('Exercício', { back: () => app.navigate('/exercicios') }), empty({ title: 'Exercício não encontrado' }));
+  if (isNew && query?.nome) base.name = query.nome;
+  const locked = !!base.builtin;
   const root = h('div');
-  root.appendChild(pageHead(isNew ? 'Novo exercício' : 'Editar exercício', { back: () => (history.length > 1 ? history.back() : app.navigate('/exercicios')) }));
+  root.appendChild(pageHead(isNew ? 'Novo exercício' : locked ? 'Meus padrões' : 'Editar exercício', { back: () => (history.length > 1 ? history.back() : app.navigate('/exercicios')), sub: locked ? base.name : undefined }));
+
   const name = textInput(base.name, { placeholder: 'Ex.: Leg press 45°', 'aria-label': 'Nome' });
   const group = selectInput(GROUPS, base.group);
-  const secondary = chips({ options: GROUPS.filter((g) => g !== 'Outro'), value: base.secondary, multi: true });
+  const secondary = chips({ options: GROUPS.filter((g) => !['Outros', 'Cardio', 'Funcional'].includes(g)), value: base.secondary, multi: true });
   const equip = selectInput(EQUIPMENT, base.equipment);
   const kindSel = selectInput(Object.entries(KINDS), base.kind || 'forca');
+  const levelSel = selectInput([['', 'Não definido'], ...LEVELS.map((l) => [l.id, l.name])], base.level || '');
+  const aliases = textArea((base.aliases || []).join('\n'), { placeholder: 'Outros nomes, um por linha (ajuda na busca)', rows: 2 });
   let art = base.art || '';
   const artSel = selectInput([['', 'Nenhum (usar minha foto/vídeo)'], ...artKeys().map((k) => [k, artLabel(k)])], art);
   const artPrev = h('div', { class: 'thumb lg', style: { width: '100%', height: 'auto', aspectRatio: '4/3', borderRadius: '16px' } });
   const showArt = () => { art = artSel.value; artPrev.innerHTML = art ? thumbSvg(art, 0.62) : ''; artPrev.style.display = art ? '' : 'none'; };
   artSel.addEventListener('change', showArt); showArt();
   const instr = textArea((base.instructions || []).join('\n'), { placeholder: 'Uma instrução por linha', rows: 5 });
+  const tips = textArea((base.tips || []).join('\n'), { placeholder: 'Dicas de execução, uma por linha', rows: 2 });
   const d = base.defaults;
   const sSets = stepper({ value: d.sets, min: 1, max: 20, decimals: 0 });
   const sReps = stepper({ value: d.reps, min: 1, max: 300, decimals: 0 });
@@ -269,33 +279,51 @@ export function exerciseEditView([id], query) {
   const unit = selectInput([['reps', 'Repetições'], ['seg', 'Tempo (segundos)'], ['min', 'Tempo (minutos)']], base.repUnit || 'reps');
   const notes = textArea(base.notes || '', { placeholder: 'Ajustes de banco, regulagem do aparelho, cuidados…' });
 
-  root.append(
-    h('div', { class: 'card' },
-      field('Nome', name), field('Grupo muscular principal', group), field('Músculos secundários', secondary), field('Aparelho / equipamento', equip), field('Tipo', kindSel)),
-    h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'Representação visual'),
-      field('Modelo de animação', artSel, 'Escolha a animação (modelo feminina) que mais se parece com o seu exercício. Você também pode adicionar fotos e vídeos próprios depois de salvar.'), artPrev),
-    h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'Padrões'),
-      h('div', { class: 'two' }, field('Séries', sSets), field(isTimed(unit.value) ? `Tempo (${unitShort(unit.value)})` : 'Repetições', sReps)),
-      h('div', { class: 'two' }, field('Carga', sLoad), field('Descanso', sRest)),
-      field('Medido em', unit),
-      h('label', { class: 'switch' }, h('span', null, 'Sem carga externa', h('small', null, 'Peso corporal (agachamento livre, prancha…)')), bw),
-      field('Menor ajuste de carga', sStep, 'Usado nas sugestões de progressão (ex.: 2 kg em halteres, 5 kg em máquinas).')),
-    h('div', { class: 'card' }, field('Instruções rápidas', instr), field('Observações', notes)),
-    h('div', { class: 'row', style: { marginTop: '16px' } },
-      btn('Cancelar', { kind: 'ghost', onClick: () => history.back() }),
-      btn('Salvar', { onClick: save, cls: 'grow' })));
+  const padroes = h('div', { class: 'card' }, h('div', { class: 'card-title' }, locked ? 'Meus padrões neste exercício' : 'Padrões'),
+    h('div', { class: 'two' }, field('Séries', sSets), field(isTimed(unit.value) ? `Tempo (${unitShort(unit.value)})` : 'Repetições', sReps)),
+    h('div', { class: 'two' }, field('Carga', sLoad), field('Descanso', sRest)),
+    locked ? null : field('Medido em', unit),
+    locked ? null : h('label', { class: 'switch' }, h('span', null, 'Sem carga externa', h('small', null, 'Peso corporal (agachamento livre, prancha…)')), bw),
+    field('Menor ajuste de carga', sStep, 'Usado nas sugestões de progressão (ex.: 2 kg em halteres, 5 kg em máquinas).'));
 
+  if (locked) {
+    root.append(
+      h('div', { class: 'catalog-note' }, h('span', { class: 'ico', html: icon('info', 20) }),
+        h('div', null, h('b', null, 'Exercício do catálogo. '), 'Nome, aparelho e instruções são os mesmos para todos e não mudam. Aqui você ajusta só os seus padrões e observações. Quer mudar mais coisas? ',
+          h('button', { type: 'button', class: 'link', onClick: () => duplicate(base) }, 'Criar minha versão'), '.')),
+      padroes,
+      h('div', { class: 'card' }, field('Minhas observações', notes)));
+  } else {
+    root.append(
+      h('div', { class: 'card' }, field('Nome', name), field('Também chamado de', aliases), field('Grupo muscular principal', group), field('Músculos secundários', secondary),
+        field('Aparelho / equipamento', equip), field('Tipo', kindSel), field('Nível', levelSel)),
+      h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'Representação visual'),
+        field('Modelo de animação', artSel, 'Escolha a animação (modelo feminina) que mais se parece com o seu exercício. Você também pode adicionar fotos e vídeos próprios depois de salvar.'), artPrev),
+      padroes,
+      h('div', { class: 'card' }, field('Instruções rápidas', instr), field('Dicas de execução', tips), field('Observações', notes)));
+  }
+  root.appendChild(h('div', { class: 'row', style: { marginTop: '16px' } },
+    btn('Cancelar', { kind: 'ghost', onClick: () => history.back() }),
+    btn('Salvar', { onClick: save, cls: 'grow' })));
+
+  const lines = (ta) => ta.value.split('\n').map((x) => x.trim()).filter(Boolean);
   async function save() {
-    if (!name.value.trim()) { toast('Dê um nome ao exercício.'); name.focus(); return; }
-    const rec = {
-      ...base, name: name.value.trim(), group: group.value, secondary: secondary.get(), equipment: equip.value, kind: kindSel.value, art: artSel.value || null,
-      instructions: instr.value.split('\n').map((s) => s.trim()).filter(Boolean),
-      defaults: { sets: sSets.get(), reps: sReps.get(), load: sLoad.get(), rest: sRest.get(), loadStep: sStep.get() },
-      repUnit: unit.value, bodyweight: bw.checked, notes: notes.value.trim(),
-    };
+    if (!locked && !name.value.trim()) { toast('Dê um nome ao exercício.'); name.focus(); return; }
+    const defaults = { sets: sSets.get(), reps: sReps.get(), load: sLoad.get(), rest: sRest.get(), loadStep: sStep.get() };
+    const rec = locked
+      ? { ...base, defaults, notes: notes.value.trim() }
+      : {
+        ...base, name: name.value.trim(), aliases: lines(aliases), group: group.value, secondary: secondary.get().filter((g) => g !== group.value), equipment: equip.value, kind: kindSel.value,
+        level: levelSel.value || null, art: artSel.value || null, instructions: lines(instr), tips: lines(tips), defaults,
+        repUnit: unit.value, bodyweight: bw.checked, notes: notes.value.trim(),
+      };
     const saved = await store.saveExercise(rec);
     toast('Exercício salvo.');
-    if (query && query.w) app.navigate(`/treino/${query.w}`); else app.navigate(`/exercicio/${saved.id}`);
+    if (query && query.w) {
+      const w = store.getWorkout(query.w);
+      if (w && isNew) { await store.saveWorkout({ ...w, items: [...w.items, store.newWorkoutItem(saved.id)] }); toast('Exercício criado e adicionado ao treino.'); }
+      app.navigate(`/treino/${query.w}`);
+    } else app.navigate(`/exercicio/${saved.id}`);
   }
   return root;
 }

@@ -1,19 +1,20 @@
 // E2E: simula o uso real do app em um celular (Chromium, viewport mobile) — fluxo completo + offline + persistência.
 // uso: node tests/e2e/run.mjs [pasta-de-screenshots]
-import { chromium } from './pw.mjs';
-import { start } from '../../scripts/serve.mjs';
+import { makeEnv, catalogId } from './harness.mjs';
+import { LEGACY_EXERCISE_SLUGS } from '../../js/data/legacy-map.js';
 import { mkdirSync, statSync } from 'node:fs';
 
 const OUT = process.argv[2] || 'tests/e2e/out';
 mkdirSync(OUT, { recursive: true });
-const PORT = 8125, BASE = `http://localhost:${PORT}/`;
-const server = await start(PORT);
-const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'pt-BR', acceptDownloads: true });
-let page = await ctx.newPage();
-const errors = [];
-const wire = (p) => { p.on('pageerror', (e) => errors.push('PAGEERROR ' + e.message)); p.on('console', (m) => { if (m.type() === 'error') errors.push('CONSOLE ' + m.text()); }); };
-wire(page);
+const env = await makeEnv({ port: 8125 });
+const BASE = env.BASE, errors = env.errors, fake = env.fake;
+const { session } = fake.createUser({ email: 'ana@teste.com', password: 'senha-forte-1', name: 'Ana' });
+const dev = await env.device({ session, name: 'app' });
+const ctx = dev.ctx;
+let page = dev.page;
+// ids do catálogo no lugar dos ids da biblioteca original ("ex-leg-press" → uuid do "Leg press horizontal")
+const ID = Object.fromEntries(await Promise.all(Object.entries(LEGACY_EXERCISE_SLUGS).map(async ([k, v]) => [k, await catalogId(v)])));
+const wire = (p) => { p.on('pageerror', (e) => errors.push('PAGEERROR ' + e.message)); p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|net::ERR/.test(m.text())) errors.push('CONSOLE ' + m.text()); }); };
 
 let passed = 0, failed = 0;
 const ok = (cond, msg) => { if (cond) { passed++; console.log('  ✓', msg); } else { failed++; console.log('  ✗ FALHOU:', msg); } };
@@ -51,31 +52,31 @@ ok(wk0 === 5, '5 treinos padrão criados (segunda a sexta)');
 
 // ================================================================= 2. HISTÓRICO (para a progressão)
 step('2. Prepara plano real + 3 sessões antigas de Leg press (20 kg, 3×12, esforço moderado)');
-await sessEval(async () => {
+await sessEval(async (ID) => {
   const s = await import('/js/store.js');
   // fixtures do teste: 3 treinos próprios (rotação A→B→C) montados com exercícios da biblioteca padrão
   for (const w of [...s.state.workouts]) await s.deleteWorkout(w.id);
   const mkw = async (name, ids) => { const w = s.blankWorkout(); w.name = name; w.items = ids.map((id) => s.newWorkoutItem(id, { sets: 3 })); await s.saveWorkout(w); };
-  await mkw('Treino A', ['ex-leg-press', 'ex-extensora', 'ex-flexora-deitada', 'ex-abdutora', 'ex-pelvica', 'ex-prancha']);
-  await mkw('Treino B', ['ex-supino-inclinado', 'ex-puxada-supinada', 'ex-rosca-w', 'ex-triceps-corda', 'ex-elev-lateral', 'ex-desenv-maq']);
-  await mkw('Treino C', ['ex-smith', 'ex-adutora', 'ex-sumo-step', 'ex-extensora']);
+  await mkw('Treino A', ['ex-leg-press', 'ex-extensora', 'ex-flexora-deitada', 'ex-abdutora', 'ex-pelvica', 'ex-prancha'].map((k) => ID[k]));
+  await mkw('Treino B', ['ex-supino-inclinado', 'ex-puxada-supinada', 'ex-rosca-w', 'ex-triceps-corda', 'ex-elev-lateral', 'ex-desenv-maq'].map((k) => ID[k]));
+  await mkw('Treino C', ['ex-smith', 'ex-adutora', 'ex-sumo-step', 'ex-extensora'].map((k) => ID[k]));
   const w = s.state.workouts[0];
-  const items = w.items.map((it) => (it.exerciseId === 'ex-leg-press' ? { ...it, load: 20 } : it));
+  const items = w.items.map((it) => (it.exerciseId === ID['ex-leg-press'] ? { ...it, load: 20 } : it));
   await s.saveWorkout({ ...w, items });
   const DAY = 86400000, now = Date.now();
   const mk = (i, daysAgo) => {
     const t0 = now - daysAgo * DAY;
     return {
-      id: 'seed-' + i, workoutId: s.state.workouts[2].id, workoutName: 'Treino C', startedAt: t0, endedAt: t0 + 3600000, durationSec: 3600, feel: 4, note: '',
+      id: crypto.randomUUID(), workoutId: s.state.workouts[2].id, workoutName: 'Treino C', startedAt: t0, endedAt: t0 + 3600000, durationSec: 3600, feel: 4, note: '',
       exercises: [{
-        itemId: 'x', exerciseId: 'ex-leg-press', name: 'Leg press', group: 'Quadríceps', secondary: [], equipment: 'Máquina', art: 'leg_press', repUnit: 'reps', bodyweight: false, notes: '',
+        itemId: crypto.randomUUID(), exerciseId: ID['ex-leg-press'], name: 'Leg press horizontal', group: 'Quadríceps', secondary: [], equipment: 'Máquina', art: 'leg_press', repUnit: 'reps', bodyweight: false, notes: '',
         planned: { sets: 3, reps: 12, load: 20, rest: 90 }, target: { sets: 3, reps: 12, load: 20, rest: 90 }, changes: [], status: 'done', startedAt: t0, endedAt: t0 + 600000, durationSec: 600,
         sets: [1, 2, 3].map((n) => ({ n, plannedReps: 12, plannedLoad: 20, plannedRest: 90, targetReps: 12, targetLoad: 20, targetRest: 90, reps: 12, load: 20, startedAt: t0, endedAt: t0 + 40000, durationSec: 40, restPlanned: 90, restActual: 95, effort: 3, rir: 2 })),
       }],
     };
   };
   for (const [i, d] of [[1, 17], [2, 10], [3, 4]]) await s.addSession(mk(i, d));
-});
+}, ID);
 const nSess0 = await sessEval(async () => (await import('/js/store.js')).state.sessions.length);
 ok(nSess0 === 3, '3 sessões históricas gravadas');
 await page.reload(); await page.waitForSelector('.next-card');
@@ -189,6 +190,7 @@ ok(/Exercícios/i.test(sumTxt) && /Séries/i.test(sumTxt) && /Volume/i.test(sumT
 await page.locator('.scale-btn', { hasText: /^Bem$/ }).click();
 await page.locator('.sess textarea').fill('Joelho ok. Aumentei no leg press.');
 await tap('Salvar e fechar');
+await page.waitForSelector('.sess', { state: 'detached' }); // o handler é assíncrono: só segue depois de fechar de verdade
 await page.waitForSelector('.next-card');
 const last = await sessEval(async () => (await import('/js/store.js')).state.sessions.at(-1));
 ok(last.workoutName === 'Treino A' && last.exercises[0].sets.length === 3, 'treino salvo no histórico (3 séries do leg press)');
@@ -204,6 +206,7 @@ ok(last.durationSec > 0 && last.totals.rest > 0, 'duração total e descanso tot
 // ================================================================= 4. TELAS DE ANÁLISE
 step('8. Exercício, evolução e calendário refletem o treino');
 await page.goto(BASE + '#/exercicios'); await page.waitForSelector('.list');
+await page.getByLabel('Buscar exercício').fill('leg press horizontal');
 await page.locator('.li', { hasText: 'Leg press horizontal' }).first().click();
 await page.waitForSelector('.visual');
 await wait(900);
@@ -307,7 +310,7 @@ await wait(800);
 await page.reload(); await page.waitForSelector('.next-card');
 const swState = await page.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); return { active: !!r?.active, controlled: !!navigator.serviceWorker.controller }; });
 ok(swState.active && swState.controlled, 'service worker ativo e controlando a página');
-await ctx.setOffline(true);
+await ctx.setOffline(true); fake.setOffline(true);
 await page.reload(); await page.waitForSelector('.next-card', { timeout: 6000 });
 ok(await hasText('Treino B'), 'app abre sem internet');
 await page.goto(BASE + '#/exercicios'); await page.waitForSelector('.list');
@@ -322,10 +325,11 @@ await page.getByRole('button', { name: /Finalizar treino agora/ }).click();
 await page.getByRole('button', { name: 'Finalizar', exact: true }).click();
 await page.waitForSelector('text=TREINO CONCLUÍDO');
 await tap('Salvar e fechar');
+await page.waitForSelector('.sess', { state: 'detached' }); // o handler é assíncrono: só segue depois de fechar de verdade
 await page.waitForSelector('.next-card');
 const n5 = await sessEval(async () => (await import('/js/store.js')).state.sessions.length);
 ok(n5 === 5, 'sessão registrada offline e salva (5 sessões)');
-await ctx.setOffline(false);
+await ctx.setOffline(false); fake.setOffline(false);
 
 // ================================================================= 8. EXPORTAR / IMPORTAR
 step('13. Exportar, apagar tudo e importar de volta');
@@ -355,5 +359,5 @@ console.log('\n─────────────────────�
 const realErrors = errors.filter((e) => !/Failed to load resource.*503|net::ERR_INTERNET_DISCONNECTED/.test(e));
 if (realErrors.length) { console.log('Erros de console/página:'); realErrors.forEach((e) => console.log('  !', e)); }
 console.log(`${passed} verificações OK, ${failed} falharam, ${realErrors.length} erros de console`);
-await browser.close(); server.close();
+await env.close();
 process.exit(failed || realErrors.length ? 1 : 0);

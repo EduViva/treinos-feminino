@@ -2,13 +2,21 @@
   "name": "treinos-feminino",
   "version": "1.0.0",
   "private": true,
-  "description": "Diário inteligente de treinos (PWA, offline-first, dados 100% locais)",
+  "description": "Diário inteligente de treinos (PWA offline-first, contas e sincronização com Supabase)",
   "type": "module",
   "scripts": {
     "serve": "node scripts/serve.mjs",
     "stamp": "node scripts/stamp-sw.mjs",
     "icons": "node scripts/make-icons.mjs",
+    "vendor": "node scripts/vendor.mjs",
     "test": "node --test tests/unit/*.test.mjs",
-    "e2e": "node tests/e2e/run.mjs && node tests/e2e/run2.mjs"
+    "e2e": "node tests/e2e/run.mjs && node tests/e2e/run2.mjs && node tests/e2e/cloud.mjs && node tests/e2e/legacy.mjs",
+    "catalog:build": "node scripts/build-seed.mjs",
+    "catalog:check": "node scripts/build-seed.mjs --check",
+    "db:test": "node scripts/db-test.mjs"
+  },
+  "devDependencies": {
+    "@supabase/supabase-js": "2.117.2",
+    "esbuild": "0.28.2"
   }
 }

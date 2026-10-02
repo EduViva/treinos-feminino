@@ -47,6 +47,14 @@ const I = {
   film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 15h18M8 4v16M16 4v16"/>',
   frames: '<rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/>',
   turtle: '<path d="M4 17c0-5 3.5-9 8-9s8 4 8 9zM3 17h18M7 20h2M15 20h2"/>',
+  star: '<path d="M12 3.6l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.9 6.8 19.7l1-5.8L3.5 9.8l5.9-.8z"/>',
+  filter: '<path d="M4 6h16M7 12h10M10 18h4"/>',
+  cloud: '<path d="M7 18a4 4 0 010-8 5.5 5.5 0 0110.6 1.5A3.3 3.3 0 0117 18z"/>',
+  cloudoff: '<path d="M3 3l18 18"/><path d="M7 18a4 4 0 01-.9-7.9M10.5 6.2a5.5 5.5 0 017.1 5.3A3.3 3.3 0 0117 18H9"/>',
+  logout: '<path d="M10 4H6a2 2 0 00-2 2v12a2 2 0 002 2h4M15 8l5 4-5 4M20 12H9"/>',
+  eye: '<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/>',
+  eyeoff: '<path d="M3 3l18 18M10.6 6a9.8 9.8 0 011.4-.1c6.4 0 10 6.1 10 6.1a17 17 0 01-3.2 3.9M6.3 7.4A16.5 16.5 0 002 12s3.6 6.1 10 6.1a9.7 9.7 0 003.4-.6"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 8l9 6 9-6"/>',
 };
 export function icon(name, size = 22) {
   return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[name] || ''}</svg>`;

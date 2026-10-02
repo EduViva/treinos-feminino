@@ -1,5 +1,7 @@
-// Camada fina sobre IndexedDB. Todos os dados ficam neste aparelho.
-// Esquema (versão 1):
+// Camada fina sobre IndexedDB: cache LOCAL (offline-first) dos dados da conta + fila de sincronização.
+// Cada usuário tem o seu próprio banco local (treinos-feminino-u-<id>): contas diferentes no mesmo
+// aparelho nunca se misturam. O banco antigo "treinos-feminino" só é lido para importar dados legados.
+// Esquema (versão 2):
 //   kv           chave/valor: profile, settings, activeSession, meta
 //   exercises    biblioteca de exercícios (inclui os criados pelo usuário)
 //   workouts     treinos planejados (A, B, C...)
@@ -10,9 +12,13 @@
 //   suggestions  sugestões de progressão + decisão + resultado
 //   media        fotos/vídeos do usuário (Blob) ligados a exercícios
 //   backups      instantâneos internos (restauráveis)
+//   prefs        preferências pessoais por exercício (favorito, arquivado, observações, padrões)
+//   outbox       alterações locais ainda não enviadas ao Supabase (uma por registro)
 
-const DB_NAME = 'treinos-feminino';
-const DB_VERSION = 1;
+export const LEGACY_DB_NAME = 'treinos-feminino';
+export const dbNameFor = (userId) => `${LEGACY_DB_NAME}-u-${userId}`;
+let DB_NAME = LEGACY_DB_NAME;
+const DB_VERSION = 2;
 export const STORES = {
   kv: { keyPath: 'key' },
   exercises: { keyPath: 'id' },
@@ -24,9 +30,27 @@ export const STORES = {
   suggestions: { keyPath: 'id', indexes: [['exerciseId', 'exerciseId']] },
   media: { keyPath: 'id', indexes: [['exerciseId', 'exerciseId']] },
   backups: { keyPath: 'id' },
+  prefs: { keyPath: 'exerciseId' },
+  outbox: { keyPath: 'key' },
 };
 
 let dbp = null;
+
+// Troca o banco local ativo (login/logout). Fecha o anterior.
+export function setDatabase(name) {
+  if (dbp) dbp.then((d) => d.close()).catch(() => {});
+  dbp = null;
+  DB_NAME = name;
+}
+export const currentDatabase = () => DB_NAME;
+export function deleteDatabase(name) {
+  if (name === DB_NAME) setDatabase(name);
+  return new Promise((resolve) => {
+    if (!('indexedDB' in globalThis)) return resolve();
+    const r = indexedDB.deleteDatabase(name);
+    r.onsuccess = r.onerror = r.onblocked = () => resolve();
+  });
+}
 
 export function open() {
   if (dbp) return dbp;

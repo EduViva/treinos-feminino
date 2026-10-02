@@ -1,5 +1,6 @@
 // Agregações puras sobre o histórico (sem acesso a DOM nem banco).
 import { sum, startOfDay, startOfWeek, addDays, dateKey, isTimed, unitShort, unitLong } from './util.js';
+import { normGroupLabel } from './data/taxonomy.js';
 
 export const PERIODS = [
   { id: '7d', label: '7 dias', days: 7 },
@@ -117,9 +118,10 @@ export function muscleLoad(sessions, exercisesMap, range) {
     for (const ex of s.exercises) {
       if (!exerciseDone(ex)) continue;
       const lib = exercisesMap.get(ex.exerciseId);
-      const group = ex.group || lib?.group || 'Outro';
+      // histórico antigo usa rótulos antigos ("Peito", "Posteriores"…): normaliza para os grupos atuais
+      const group = normGroupLabel(ex.group || lib?.group || 'Outros', lib?.kind);
       m.set(group, (m.get(group) || 0) + ex.sets.length);
-      for (const sec of ex.secondary || lib?.secondary || []) m.set(sec, (m.get(sec) || 0) + ex.sets.length * 0.5);
+      for (const sec of ex.secondary || lib?.secondary || []) { const g = normGroupLabel(sec); m.set(g, (m.get(g) || 0) + ex.sets.length * 0.5); }
     }
   }
   return [...m.entries()].sort((a, b) => b[1] - a[1]);

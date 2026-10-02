@@ -57,7 +57,7 @@ export function wellbeingView() {
         await store.saveWellbeing(rec); toast('Bem-estar salvo.'); drawCompare();
       } }),
         store.state.wellbeing.has(date) ? btn('', { kind: 'danger', ic: 'trash', aria: 'Apagar registro do dia', onClick: async () => { await store.deleteWellbeing(date); toast('Registro apagado.'); drawForm(); drawCompare(); } }) : null),
-      h('p', { class: 'disclaimer' }, 'Registros pessoais, guardados só neste aparelho. Isto não é um diagnóstico nem uma orientação médica.')));
+      h('p', { class: 'disclaimer' }, 'Registros pessoais, guardados só na sua conta. Isto não é um diagnóstico nem uma orientação médica.')));
   }
   const q = (title, node) => h('div', { class: 'q' }, h('h4', null, title), node);
 

@@ -1,0 +1,20 @@
+# Configuração do Supabase CLI (opcional) — o projeto remoto é "App de treinos" (org "App feminino").
+# Para recriar o banco do zero em um projeto novo/local:
+#   supabase db reset        # aplica supabase/migrations/*.sql e depois supabase/seed.sql
+project_id = "treinos-feminino"
+
+[db]
+major_version = 17
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[auth]
+site_url = "https://eduviva.github.io/treinos-feminino/"
+additional_redirect_urls = ["https://eduviva.github.io/treinos-feminino/**", "http://localhost:8080/**", "http://localhost:8125/**"]
+enable_signup = true
+minimum_password_length = 8
+
+[auth.email]
+enable_confirmations = true

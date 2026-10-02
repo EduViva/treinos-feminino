@@ -1,18 +1,17 @@
 // E2E 2: edição de treinos/exercícios, mídia própria, novo padrão, importar lista, histórico intacto.
-import { chromium } from './pw.mjs';
-import { start } from '../../scripts/serve.mjs';
+import { makeEnv, catalogId } from './harness.mjs';
+import { LEGACY_EXERCISE_SLUGS } from '../../js/data/legacy-map.js';
 import { mkdirSync } from 'node:fs';
 
 const OUT = process.argv[2] || 'tests/e2e/out';
 mkdirSync(OUT, { recursive: true });
-const PORT = 8129, BASE = `http://localhost:${PORT}/`;
-const server = await start(PORT);
-const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'pt-BR' });
-const page = await ctx.newPage();
-const errors = [];
-page.on('pageerror', (e) => errors.push('PAGEERROR ' + e.message));
-page.on('console', (m) => { if (m.type() === 'error') errors.push('CONSOLE ' + m.text()); });
+const env = await makeEnv({ port: 8129 });
+const BASE = env.BASE, errors = env.errors, fake = env.fake;
+const { session } = fake.createUser({ email: 'bia@teste.com', password: 'senha-forte-1', name: 'Bia' });
+const dev = await env.device({ session, name: 'app' });
+const page = dev.page;
+const ID = Object.fromEntries(await Promise.all(Object.entries(LEGACY_EXERCISE_SLUGS).map(async ([k, v]) => [k, await catalogId(v)])));
+const OLD_ID = '00000000-0000-4000-8000-0000000000a1';
 let passed = 0, failed = 0;
 const ok = (c, m) => { if (c) { passed++; console.log('  ✓', m); } else { failed++; console.log('  ✗ FALHOU:', m); } };
 const step = (t) => console.log('\n▶', t);
@@ -21,6 +20,13 @@ const wait = (ms) => page.waitForTimeout(ms);
 const shot = (n) => page.screenshot({ path: `${OUT}/${n}.png` });
 const tap = (name, o = {}) => page.getByRole('button', { name, exact: o.exact ?? false }).first().click({ timeout: 4000 });
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8BQz0AEYBxVSF+FABJADveWkH6oAAAAAElFTkSuQmCC', 'base64');
+// "Adicionar exercícios": procura o exercício pelo nome (o catálogo tem 334) e o marca
+const pick = async (query, rowText) => {
+  const box = page.locator('.sheet input[aria-label="Buscar exercício"]');
+  await box.fill(query);
+  await page.waitForFunction((q) => /para “/.test(document.querySelector('.sheet .finder-count')?.textContent || '') && document.querySelector('.sheet .finder-count').textContent.includes(q), query, { timeout: 4000 });
+  await page.locator('.sheet .finder-list .li', { hasText: rowText }).first().click();
+};
 
 await page.goto(BASE);
 await page.waitForSelector('.hero');
@@ -28,24 +34,24 @@ await ev(async () => { const s = await import('/js/store.js'); await s.saveProfi
 
 // ---------------------------------------------------------------- histórico "antigo" (de meses atrás)
 step('0. Histórico antigo (para provar que mudar a rotina não o altera)');
-await ev(async () => {
+await ev(async ([ID, OLD_ID]) => {
   const s = await import('/js/store.js');
   const w = s.state.workouts[0];
   const t0 = Date.now() - 120 * 86400000;
   await s.addSession({
-    id: 'old-1', workoutId: w.id, workoutName: 'Treino A (antigo)', startedAt: t0, endedAt: t0 + 3000000, durationSec: 3000, feel: 4, note: 'rotina antiga',
-    exercises: [{ itemId: 'i', exerciseId: 'ex-leg-press', name: 'Leg press', group: 'Quadríceps', secondary: [], equipment: 'Máquina', art: 'leg_press', repUnit: 'reps', bodyweight: false, notes: '', planned: { sets: 3, reps: 12, load: 30, rest: 90 }, target: { sets: 3, reps: 12, load: 30, rest: 90 }, changes: [], status: 'done', startedAt: t0, endedAt: t0 + 500000, durationSec: 500,
+    id: OLD_ID, workoutId: w.id, workoutName: 'Treino A (antigo)', startedAt: t0, endedAt: t0 + 3000000, durationSec: 3000, feel: 4, note: 'rotina antiga',
+    exercises: [{ itemId: crypto.randomUUID(), exerciseId: ID['ex-leg-press'], name: 'Leg press horizontal', group: 'Quadríceps', secondary: [], equipment: 'Máquina', art: 'leg_press', repUnit: 'reps', bodyweight: false, notes: '', planned: { sets: 3, reps: 12, load: 30, rest: 90 }, target: { sets: 3, reps: 12, load: 30, rest: 90 }, changes: [], status: 'done', startedAt: t0, endedAt: t0 + 500000, durationSec: 500,
       sets: [1, 2, 3].map((n) => ({ n, plannedReps: 12, plannedLoad: 30, plannedRest: 90, targetReps: 12, targetLoad: 30, targetRest: 90, reps: 12, load: 30, startedAt: t0, endedAt: t0 + 40000, durationSec: 40, restPlanned: 90, restActual: 90, effort: null, rir: null })) }],
   });
-});
-const oldBefore = await ev(async () => JSON.stringify((await import('/js/store.js')).state.sessions.find((x) => x.id === 'old-1')));
+}, [ID, OLD_ID]);
+const oldBefore = await ev(async (id) => JSON.stringify((await import('/js/store.js')).state.sessions.find((x) => x.id === id)), OLD_ID);
 
 // ---------------------------------------------------------------- criar exercício
 step('1. Criar exercício novo com modelo de animação');
 await page.goto(BASE + '#/exercicio/novo'); await page.waitForSelector('input[aria-label="Nome"]');
 await page.getByLabel('Nome').fill('Meu leg press 45');
 await page.locator('select').nth(0).selectOption('Quadríceps');
-await page.locator('select').nth(3).selectOption('leg_press');
+await page.locator('select').nth(4).selectOption('leg_press');
 await wait(200);
 ok(await page.locator('.thumb.lg svg').count() === 1, 'pré-visualização da animação escolhida');
 await tap('Salvar', { exact: true });
@@ -86,7 +92,7 @@ if (fc2) await fc2.setFiles({ name: 'foto2.png', mimeType: 'image/png', buffer: 
 await wait(600);
 media = await ev(async (id) => (await import('/js/store.js')).listMedia(id), exId);
 ok(media.length === 2, 'substituir mantém a quantidade de mídias (mesmo item)');
-ok(await ev(async () => (await import('/js/store.js')).state.sessions.some((s) => s.id === 'old-1')), 'substituir mídia não afeta o histórico');
+ok(await ev(async (id) => (await import('/js/store.js')).state.sessions.some((s) => s.id === id), OLD_ID), 'substituir mídia não afeta o histórico');
 await page.locator('.media-tile').nth(1).click();
 await page.getByRole('button', { name: 'Excluir', exact: true }).click();
 await page.locator('.sheet').getByRole('button', { name: 'Excluir', exact: true }).click();
@@ -101,16 +107,16 @@ await page.getByLabel('Nome do treino').fill('Treino D');
 await page.getByLabel('Nome do treino').blur();
 await tap('Adicionar exercícios');
 await page.waitForSelector('.sheet .li');
-await page.locator('.sheet .li', { hasText: 'Cadeira extensora' }).click();
-await page.locator('.sheet .li', { hasText: 'Cadeira abdutora' }).click();
-await page.locator('.sheet .li', { hasText: 'Prancha' }).click();
+await pick('cadeira extensora', 'Cadeira extensora');
+await pick('cadeira abdutora', 'Cadeira abdutora');
+await pick('prancha abdominal', 'Prancha abdominal');
 await tap('Adicionar (3)');
 await page.waitForSelector('.ex-row');
 ok(await page.locator('.ex-row').count() === 3, '3 exercícios adicionados');
 await page.locator('.ex-row').first().getByRole('button', { name: 'Mover para baixo' }).click();
 await wait(300);
 const order = await ev(async () => (await import('/js/store.js')).state.workouts.find((w) => w.name === 'Treino D').items.map((i) => i.exerciseId));
-ok(order[0] === 'ex-abdutora' && order[1] === 'ex-extensora', 'reordenar exercícios (mover para baixo)');
+ok(order[0] === ID['ex-abdutora'] && order[1] === ID['ex-extensora'], 'reordenar exercícios (mover para baixo)');
 // editar item (séries, reps, carga, descanso)
 await page.locator('.ex-row .meta').first().click();
 await page.waitForSelector('.sheet .stepper');
@@ -124,7 +130,8 @@ ok(itD.sets === 4 && itD.reps === 8 && itD.load === 30 && itD.rest === 60, 'item
 await page.locator('.ex-row .meta').nth(1).click();
 await page.getByRole('button', { name: /Substituir por outro exercício/ }).click();
 await page.waitForSelector('.sheet .li');
-await page.locator('.sheet .li', { hasText: 'Meu leg press 45' }).click();
+await page.locator('.sheet input[aria-label="Buscar exercício"]').fill('meu leg press');
+await page.locator('.sheet .finder-list .li', { hasText: 'Meu leg press 45' }).first().click();
 await wait(400);
 const items2 = await ev(async () => (await import('/js/store.js')).state.workouts.find((w) => w.name === 'Treino D').items.map((i) => i.exerciseId));
 ok(items2[1] === exId, 'exercício substituído por outro');
@@ -163,6 +170,7 @@ await page.getByRole('button', { name: /Finalizar treino agora/ }).click();
 await page.getByRole('button', { name: 'Finalizar', exact: true }).click();
 await page.waitForSelector('text=TREINO CONCLUÍDO');
 await tap('Salvar e fechar');
+await page.waitForSelector('.sess', { state: 'detached' }); // o handler é assíncrono: só segue depois de fechar de verdade
 await page.waitForSelector('.next-card');
 const ss = await ev(async () => (await import('/js/store.js')).state.sessions.at(-1));
 ok(ss.exercises[0].changes.at(-1).scope === 'default' && ss.exercises[0].planned.load === 30 && ss.exercises[0].sets[0].load === 35, 'registro: planejado era 30, mudança marcada como “novo padrão”, realizado 35');
@@ -182,15 +190,16 @@ Rosca scott 3x10 12kg
 Treino B
 1) Supino reto com barra 4x8 40kg descanso 2min
 Puxada alta 3x12
-Prancha 3x30s`);
+Prancha 3x30s
+Exercício esquisito do João 3x10`);
 await tap('Revisar');
 await page.waitForSelector('.badge.ok');
 await shot('22-importar');
-ok(await page.locator('.badge.ok').count() >= 5 && await page.locator('.badge.warn').count() === 2, 'revisão: 5 achados na biblioteca, 2 novos (Rosca scott, Supino reto com barra)');
+ok(await page.locator('.badge.ok').count() === 7 && await page.locator('.badge.warn').count() === 1, 'revisão: 7 achados no catálogo (inclusive por nome popular: “Extensora”, “Mesa flexora”, “Rosca scott”) e 1 novo');
 await tap('Importar', { exact: true });
-await page.waitForFunction(async () => (await import('/js/store.js')).state.workouts.filter((w) => w.imported).length === 2, null, { timeout: 8000 });
+for (let i = 0; i < 80 && (await ev(async () => (await import('/js/store.js')).state.workouts.filter((w) => w.name === 'Treino A' || w.name === 'Treino B').length)) < 2; i++) await wait(100);
 await page.waitForSelector('.wk-card');
-const imp = await ev(async () => { const s = await import('/js/store.js'); return s.state.workouts.filter((w) => w.imported).map((w) => ({ n: w.name, items: w.items.map((i) => [s.getExercise(i.exerciseId).name, i.sets, i.reps, i.load, i.rest]) })); });
+const imp = await ev(async () => { const s = await import('/js/store.js'); return s.state.workouts.filter((w) => w.name === 'Treino A' || w.name === 'Treino B').map((w) => ({ n: w.name, items: w.items.map((i) => [s.getExercise(i.exerciseId).name, i.sets, i.reps, i.load, i.rest]) })); });
 const A = imp.find((w) => w.n === 'Treino A');
 ok(A && A.items.length === 4 && A.items[0][0].startsWith('Leg press') && A.items[0][1] === 4 && A.items[0][2] === 12 && A.items[0][3] === 80 && A.items[0][4] === 90, 'Treino A importado: Leg press 4×12, 80 kg, 90 s');
 ok(A.items[1][0] === 'Cadeira extensora' && A.items[1][2] === 15 && A.items[1][3] === 30, 'nome curto “Extensora” associado a “Cadeira extensora” (15 reps, 30 kg)');
@@ -198,46 +207,34 @@ console.log('   importados:', JSON.stringify(imp.map((w) => [w.n, w.items.length
 const Bw = imp.find((w) => w.n === 'Treino B');
 ok(Bw.items[0][4] === 120 && Bw.items[0][1] === 4 && Bw.items[0][2] === 8, 'descanso “2min” = 120 s; 4×8');
 ok(Bw.items[2][0].startsWith('Prancha') && Bw.items[2][2] === 30, 'prancha 3×30 s');
+ok(Bw.items[3][0] === 'Exercício Esquisito Do João' && (await ev(async () => [...(await import('/js/store.js')).state.exercises.values()].some((e) => !e.builtin && /Esquisito/.test(e.name)))), 'exercício que não existe no catálogo é criado como exercício PRÓPRIO');
 
 // ---------------------------------------------------------------- histórico antigo íntegro
 step('6. Mudanças na rotina não alteram o histórico antigo');
-await ev(async () => { const s = await import('/js/store.js'); for (const w of [...s.state.workouts]) await s.deleteWorkout(w.id); await s.removeExercise('ex-leg-press'); });
-const oldAfter = await ev(async () => JSON.stringify((await import('/js/store.js')).state.sessions.find((x) => x.id === 'old-1')));
-ok(oldBefore === oldAfter, 'sessão antiga idêntica depois de apagar todos os treinos');
-const lp = await ev(async () => (await import('/js/store.js')).getExercise('ex-leg-press'));
-ok(lp && lp.archived === true, 'exercício com histórico é arquivado (não apagado)');
+await ev(async (ID) => { const s = await import('/js/store.js'); for (const w of [...s.state.workouts]) await s.deleteWorkout(w.id); await s.removeExercise(ID['ex-leg-press']); }, ID);
+const oldAfter = await ev(async (id) => JSON.stringify((await import('/js/store.js')).state.sessions.find((x) => x.id === id)), OLD_ID);
+// integridade: tudo o que existia continua igual (o registro pode apenas GANHAR campos normalizados pelo servidor)
+const keeps = (a, b) => (a !== null && typeof a === 'object' ? b !== null && typeof b === 'object' && Object.keys(a).every((k) => keeps(a[k], b[k])) : a === b);
+ok(keeps(JSON.parse(oldBefore), JSON.parse(oldAfter)), 'sessão antiga com todos os dados originais intactos depois de apagar todos os treinos');
+const lp = await ev(async (id) => (await import('/js/store.js')).getExercise(id), ID['ex-leg-press']);
+ok(lp && lp.archived === true && lp.builtin === true, 'exercício do catálogo com histórico só é arquivado para mim (não some do histórico)');
 await page.goto(BASE + '#/evolucao'); await page.waitForSelector('.chart svg');
 ok(await page.locator('.chart svg').count() > 0, 'evolução continua exibindo o histórico antigo');
 
-// ---------------------------------------------------------------- migração da biblioteca antiga
-step('7. Migração: instalação antiga (v1) → biblioteca e treinos novos');
-await ev(async () => {
-  const db = await import('/js/db.js');
-  await db.wipeAll();
-  await db.kvSet('profile', { name: 'Antiga', createdAt: 1 });
-  await db.kvSet('meta', { seedVersion: 1 });
-  const old = (id, name) => ({ id, name, group: 'Outro', secondary: [], equipment: 'Máquina', art: null, instructions: [], defaults: { sets: 3, reps: 12, load: 0, rest: 90 }, repUnit: 'reps', bodyweight: false, notes: '', builtin: true, archived: false });
-  await db.putMany('exercises', [old('ex-stiff', 'Stiff com halteres'), old('ex-panturrilha', 'Elevação de panturrilha em pé')]);
-  await db.put('workouts', { id: 'w-old', name: 'Treino A', description: 'Exemplo', example: true, items: [{ id: 'i1', exerciseId: 'ex-stiff', sets: 3, reps: 12, load: 0, rest: 90 }], order: 0 });
-  await db.put('sessions', { id: 's-old', workoutId: 'w-old', workoutName: 'Treino A', startedAt: Date.now() - 86400000 * 30, endedAt: Date.now() - 86400000 * 30 + 1000, durationSec: 1000,
-    exercises: [{ exerciseId: 'ex-panturrilha', name: 'Elevação de panturrilha em pé', status: 'done', repUnit: 'reps', planned: { sets: 1, reps: 15, load: 8, rest: 60 }, sets: [{ n: 1, reps: 15, load: 8, restActual: 60 }] }] });
-});
-await page.goto(BASE);
-await page.waitForSelector('.next-card');
-const mig = await ev(async () => {
-  const s = await import('/js/store.js');
-  return { ex: [...s.state.exercises.values()].length, stiff: !!s.getExercise('ex-stiff'), pant: s.getExercise('ex-panturrilha'), wks: s.state.workouts.map((w) => w.name), sess: s.state.sessions.length, ver: s.state.meta.libVersion };
-});
-ok(!mig.stiff, 'exercício antigo sem histórico foi excluído');
-ok(mig.pant && mig.pant.archived === true && mig.sess === 1, 'exercício antigo COM histórico foi arquivado (histórico intacto)');
-ok(mig.ex === 50 + 1 && mig.ver === 3, `biblioteca nova instalada (${mig.ex} itens incl. 1 arquivado)`);
-ok(JSON.stringify(mig.wks) === JSON.stringify(['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta']), 'treino de exemplo removido; Segunda–Sexta criados');
+// ---------------------------------------------------------------- treinos-modelo
+step('7. Treinos-modelo (Segunda–Sexta) a partir do catálogo');
+await ev(async () => { const s = await import('/js/store.js'); for (const w of [...s.state.workouts]) await s.deleteWorkout(w.id); await s.loadSeedWorkouts(); });
+await page.goto(BASE); await page.waitForSelector('.next-card');
+const mig = await ev(async () => { const s = await import('/js/store.js'); return s.state.workouts.map((w) => w.name); });
+ok(JSON.stringify(mig) === JSON.stringify(['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta']), 'Segunda–Sexta criados');
 ok(['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'].includes(await page.locator('.next-card h2').innerText()), 'início mostra o treino da semana');
-const firstItems = await ev(async () => { const s = await import('/js/store.js'); return s.state.workouts[0].items.slice(0, 4).map((i) => s.getExercise(i.exerciseId).kind); });
-ok(JSON.stringify(firstItems) === JSON.stringify(['alongamento', 'alongamento', 'mobilidade', 'mobilidade']), 'cada treino começa com 2 alongamentos + 2 mobilidades');
+const firstItems = await ev(async () => { const s = await import('/js/store.js'); return s.state.workouts.map((w) => w.items.slice(0, 4).map((i) => s.getExercise(i.exerciseId).kind).join()); });
+ok(firstItems.every((k) => k === 'alongamento,alongamento,mobilidade,mobilidade'), 'cada treino começa com 2 alongamentos + 2 mobilidades');
+const sunItems = await ev(async () => (await import('/js/store.js')).state.workouts.every((w) => w.items.every((i) => !!i.exerciseId)));
+ok(sunItems, 'todos os itens apontam para exercícios do catálogo');
 
 console.log('\n──────────────────────────────');
 console.log(`${passed} verificações OK, ${failed} falharam, ${errors.length} erros de console`);
 errors.forEach((e) => console.log('  !', e));
-await browser.close(); server.close();
+await env.close();
 process.exit(failed || errors.length ? 1 : 0);

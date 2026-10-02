@@ -11,13 +11,15 @@ import { sparkline } from '../charts.js';
 import { hasDraft, resumeSession, discardDraft } from './session.js';
 import { activitySheet } from './activities.js';
 import { sessionDetail } from './calendar.js';
+import { syncPill } from './common.js';
+import * as sync from '../sync/engine.js';
 
 export function homeView() {
   const st = store.state;
   const root = h('div');
   const name = store.firstName();
   root.appendChild(h('header', { class: 'page-head' }, h('div', { class: 'ph-text' },
-    h('h1', null, name ? `Olá, ${name}` : 'Olá'), h('p', { class: 'muted' }, fmtDateLong(Date.now())))));
+    h('h1', null, name ? `Olá, ${name}` : 'Olá'), h('p', { class: 'muted' }, fmtDateLong(Date.now()))), h('div', { class: 'ph-right' }, syncPill())));
 
   // treino em andamento (assíncrono)
   const draftHost = h('div');
@@ -81,7 +83,7 @@ export function homeView() {
   root.appendChild(h('div', { class: 'section' },
     h('div', { class: 'grid2' },
       btn('Registrar atividade', { kind: 'secondary', ic: 'flame', onClick: () => activitySheet({ onSaved: () => app.rerender() }) }),
-      btn('Bem-estar de hoje', { kind: 'secondary', ic: 'heart', onClick: () => app.navigate('/bem-estar') }))));
+      btn('Bem‑estar de hoje', { kind: 'secondary', ic: 'heart', onClick: () => app.navigate('/bem-estar') }))));
 
   // últimas atividades
   const recent = [
@@ -121,12 +123,11 @@ export function homeView() {
         h('a', { class: 'link', href: '#/evolucao', style: { display: 'inline-block', marginTop: '8px' } }, 'Ver evolução completa'))));
   }
 
-  // lembrete de backup
-  const last = st.meta.lastExportAt || 0;
-  if (st.sessions.length >= 3 && Date.now() - last > 30 * 86400000) {
-    root.appendChild(h('div', { class: 'banner', style: { marginTop: '18px' } }, h('span', { class: 'ico', html: icon('shield', 22) }),
-      h('div', null, h('b', null, 'Faça um backup'), h('p', { class: 'muted' }, last ? `Último arquivo exportado em ${fmtDate(last, { year: true })}.` : 'Seus dados ficam só neste aparelho. Exporte um arquivo para não perder o histórico.'),
-        h('a', { class: 'link', href: '#/perfil' }, 'Ir para Backup'))));
+  // Os dados já ficam na conta (nuvem). O aviso só aparece se há alterações que não conseguiram ser enviadas.
+  if (sync.status.failed > 0) {
+    root.appendChild(h('div', { class: 'banner', style: { marginTop: '18px' } }, h('span', { class: 'ico', html: icon('cloudoff', 22) }),
+      h('div', null, h('b', null, 'Algumas alterações não foram enviadas'), h('p', { class: 'muted' }, 'Elas estão guardadas neste aparelho e o app tenta de novo sozinho. Você pode forçar o envio no Perfil.'),
+        h('a', { class: 'link', href: '#/perfil' }, 'Abrir Perfil'))));
   }
   return root;
 }

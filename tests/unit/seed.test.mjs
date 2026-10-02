@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SEED_EXERCISES, SEED_WORKOUTS } from '../../js/data/seed.js';
+import { SEED_WORKOUTS } from '../../js/data/seed.js';
+import { SEED_EXERCISES } from '../fixtures/legacy-library.mjs';
 import { ARTS } from '../../js/figure/arts.js';
 import '../../js/figure/arts2.js';
 import '../../js/figure/arts3.js';
