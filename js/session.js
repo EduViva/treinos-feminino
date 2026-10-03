@@ -84,7 +84,20 @@ export class Session {
     this._save();
   }
 
+  // Depois da série em andamento não sobra nada a fazer? Então não há descanso: o treino termina.
+  get finishesWorkout() {
+    const ex = this.cur;
+    if (!ex || ex.sets.length + 1 < ex.target.sets) return false;
+    return !this.d.exercises.some((e, i) => i !== this.d.cursor.ei && (e.status === 'pending' || (e.status === 'active' && e.sets.length < e.target.sets)));
+  }
+
   // ----- exercício -----
+  // Começo do treino: já inicia o 1º exercício (sem passar pela tela "Iniciar exercício").
+  // `introSkipped` avisa a tela da 1ª série para mostrar o que a apresentação mostraria (sugestão, instruções).
+  begin() {
+    this.cur.introSkipped = true;
+    this.startExercise();
+  }
   startExercise() {
     const ex = this.cur, t = clock();
     if (ex.status !== 'active') { ex.status = 'active'; ex.startedAt = ex.startedAt || t; }

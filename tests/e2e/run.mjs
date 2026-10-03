@@ -82,11 +82,36 @@ ok(nSess0 === 3, '3 sessões históricas gravadas');
 await page.reload(); await page.waitForSelector('.next-card');
 ok(await hasText('Sugestões de progressão'), 'início mostra sugestão de progressão baseada no histórico');
 
+// ================================================================= 2b. MENU INFERIOR
+step('2b. Menu inferior com cor própria e item ativo evidente (claro e escuro)');
+const measureTabs = () => page.evaluate(() => {
+  const px = (c) => { const cv = document.createElement('canvas'); cv.width = cv.height = 1; const x = cv.getContext('2d', { willReadFrequently: true }); x.fillStyle = '#000'; x.clearRect(0, 0, 1, 1); x.fillStyle = c; x.fillRect(0, 0, 1, 1); return [...x.getImageData(0, 0, 1, 1).data.slice(0, 3)]; };
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = (c) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
+  const cr = (a, b) => { const [hi, lo] = [L(px(a)), L(px(b))].sort((m, n) => n - m); return (hi + 0.05) / (lo + 0.05); };
+  const bar = document.querySelector('#tabbar'), cs = (n) => getComputedStyle(n);
+  const on = bar.querySelector('.tab.on'), off = bar.querySelector('.tab:not(.on)'), pill = on.querySelector('.ico');
+  const barBg = cs(bar).backgroundColor, pageBg = cs(document.body).backgroundColor;
+  return { barBg, pageBg, h: bar.getBoundingClientRect().height, fixed: cs(bar).position === 'fixed',
+    off: cr(cs(off).color, barBg), on: cr(cs(on).color, barBg), pill: cr(cs(pill).backgroundColor, barBg), pillIcon: cr(cs(pill).color, cs(pill).backgroundColor) };
+});
+const themeBefore = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
+for (const theme of ['light', 'dark']) {
+  await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
+  await wait(350);
+  const t = await measureTabs();
+  ok(t.fixed && t.h >= 56 && t.barBg !== t.pageBg, `tema ${theme}: o menu inferior fica fixo e tem cor própria (${t.barBg} sobre ${t.pageBg})`);
+  ok(t.off >= 4.5 && t.on >= 4.5 && t.pill >= 3 && t.pillIcon >= 4.5, `tema ${theme}: rótulos ${t.off.toFixed(1)}:1 e ${t.on.toFixed(1)}:1, pílula do item ativo ${t.pill.toFixed(1)}:1, ícone ${t.pillIcon.toFixed(1)}:1`);
+}
+await page.evaluate((t) => { if (t == null) document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); }, themeBefore);
+
 // ================================================================= 3. TREINO
 step('3. Modo treino: iniciar → exercício → sugestão explicada');
 await tap('Iniciar treino');
 await page.waitForSelector('.sess');
 ok(await hasText('Leg press'), 'abre direto no 1º exercício (Leg press)');
+ok(await page.getByRole('button', { name: 'Iniciar exercício' }).count() === 0 && await page.getByRole('button', { name: 'Iniciar série' }).count() === 1, '“Iniciar treino” já inicia o 1º exercício (não pede “Iniciar exercício”)');
+ok(await hasText('Série 1 de 3') && await hasText('Como fazer'), 'a 1ª série já mostra o que a apresentação mostrava (instruções, sugestão)');
 await wait(500);
 await shot('03-intro-leg-press');
 ok(await hasText('Por que'), 'sugestão mostra “Por que esta sugestão” — explicação visível') || ok(await hasText('Testar 25 kg'), 'sugestão: testar 25 kg');
@@ -107,7 +132,6 @@ const sg = await sessEval(async () => (await import('/js/store.js')).state.sugge
 ok(sg && sg.decision === 'accepted' && sg.currentLoad === 20 && sg.newLoad === 25 && sg.decidedAt, 'decisão registrada (recomendação, decisão, nova carga, data)');
 
 step('4. Série 1: alterar carga SOMENTE HOJE');
-await tap('Iniciar exercício');
 await page.waitForSelector('.s-set');
 ok(await hasText('Série 1 de 3'), 'série 1 de 3');
 ok((await page.locator('.s-set .cell b').first().innerText()) === '25', 'carga alvo hoje = 25 (após aceitar)');
@@ -127,12 +151,13 @@ await shot('06-ready');
 
 step('5. Série 1: iniciar, terminar, descanso (+15s, editar), resultado real');
 await tap('Iniciar série');
-await page.waitForSelector('.timer-big');
+await page.getByRole('button', { name: 'Descansar', exact: true }).waitFor();
 await wait(1300);
-const runTxt = await text('.timer-big');
-ok(/^00:0[1-3]$/.test(runTxt), `cronômetro da série em andamento (${runTxt})`);
+ok(await page.locator('.timer-big').count() === 0, 'exercício por repetição: o contador de tempo da série não aparece');
+ok(await page.getByRole('button', { name: 'Terminei', exact: true }).count() === 0, 'o botão “Terminei” virou “Descansar”');
+ok(/^\d\d:\d\d/.test(await text('.s-top .clock')), 'o tempo total do treino continua no topo');
 await shot('07-running');
-await tap('Terminei');
+await tap('Descansar');
 await page.waitForSelector('.ring');
 ok(await hasText('DESCANSO'), 'descanso inicia ao terminar a série');
 const r0 = await text('.ring .timer-big');
@@ -166,7 +191,7 @@ ok(await hasText('Série 2 de 3'), 'passa para a série 2 de 3');
 
 step('6. Séries 2 e 3 (pulando descanso) e próximo exercício');
 for (let i = 0; i < 2; i++) {
-  await tap('Iniciar série'); await wait(400); await tap('Terminei');
+  await tap('Iniciar série'); await wait(400); await tap('Descansar');
   await page.waitForSelector('.ring');
   await tap('Pular descanso');
   await wait(200);
@@ -259,13 +284,76 @@ await page.waitForSelector('.sheet');
 await page.getByRole('button', { name: 'Vôlei', exact: true }).click();
 ok(await page.locator('.sheet input[placeholder="km"]').count() === 0, 'vôlei não pede distância (campos adaptáveis)');
 await page.keyboard.press('Escape');
+await page.waitForSelector('.sheet >> nth=1');
+ok(/Descartar alterações/.test(await page.locator('.sheet').last().innerText()), 'fechar a folha com alteração (Esc) pede confirmação em vez de perder o que foi mudado');
+await page.locator('.sheet').last().getByRole('button', { name: 'Descartar', exact: true }).click();
+await page.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 4000 });
 
 await page.goto(BASE + '#/bem-estar'); await page.waitForSelector('.q');
-await page.locator('.q', { hasText: 'Energia' }).locator('.scale-btn', { hasText: 'Alta' }).first().click();
-await page.locator('.q', { hasText: 'Fadiga muscular' }).locator('.scale-btn', { hasText: 'Leve' }).click();
-await page.locator('.q', { hasText: 'Humor' }).locator('.scale-btn', { hasText: 'Bom' }).click();
+await page.locator('.q', { hasText: 'Energia' }).locator('.wq-opt', { hasText: 'Alta' }).first().click();
+await page.locator('.q', { hasText: 'Fadiga muscular' }).locator('.wq-opt', { hasText: 'Leve' }).click();
+await page.locator('.q', { hasText: 'Humor' }).locator('.wq-opt', { hasText: 'Bom' }).click();
 await page.locator('.q', { hasText: 'Menstruação' }).locator('.switch').first().click();
 await page.locator('.q', { hasText: 'Menstruação' }).getByText('Primeiro dia deste ciclo').click();
+// ---- Bem-estar: respostas com ÍCONE e uma cor pastel por PERGUNTA (claro e escuro) ----
+const humorBom = page.locator('.q', { hasText: 'Humor' }).locator('.wq-opt', { hasText: 'Bom' });
+ok(await humorBom.getAttribute('aria-pressed') === 'true', 'resposta escolhida fica marcada (aria-pressed)');
+await humorBom.click();
+ok(await page.locator('.wq[data-q="mood"] .wq-opt[aria-pressed="true"]').count() === 0, 'tocar de novo na resposta escolhida limpa a escolha');
+await humorBom.click();
+ok(await humorBom.getAttribute('aria-pressed') === 'true', 'e dá para escolher outra vez');
+await page.locator('.q', { hasText: 'Menstruação' }).locator('.wq-opt', { hasText: 'Médio' }).click();
+await page.locator('.q', { hasText: 'Cansaço geral' }).locator('.wq-opt', { hasText: 'Moderado' }).click();
+await page.locator('.q', { hasText: 'Recuperação' }).locator('.wq-opt', { hasText: 'Boa' }).click();
+const wbUi = await page.evaluate(() => {
+  const panels = [...document.querySelectorAll('.wq')];
+  const bg = new Set(panels.map((p) => getComputedStyle(p).backgroundColor));
+  const opts = [...document.querySelectorAll('.wq-opt')];
+  const groupsDistinct = [...document.querySelectorAll('.wq-scale')].every((g) => { const svgs = [...g.querySelectorAll('.wq-opt svg')].map((s) => s.innerHTML); return svgs.length === g.children.length && new Set(svgs).size === svgs.length; });
+  return {
+    panels: panels.length, colors: bg.size, opts: opts.length,
+    withIcon: opts.filter((o) => o.querySelector('svg path, svg circle, svg rect') && o.querySelector('svg').getAttribute('aria-hidden') === 'true').length,
+    withLabel: opts.filter((o) => (o.querySelector('.wq-lab')?.textContent || '').trim().length > 0).length,
+    groupsDistinct,
+  };
+});
+ok(wbUi.panels === 7 && wbUi.colors === 7, `cada pergunta tem a sua cor pastel (${wbUi.colors} fundos diferentes em ${wbUi.panels} painéis)`);
+ok(wbUi.opts === 28 && wbUi.withIcon === 28 && wbUi.withLabel === 28, `todas as ${wbUi.opts} respostas têm ícone (decorativo, aria-hidden) e rótulo`);
+ok(wbUi.groupsDistinct, 'dentro de cada pergunta, cada resposta tem um ícone diferente');
+const groupsNamed = await Promise.all(['Humor', 'Energia', 'Cansaço geral', 'Fadiga muscular', 'Recuperação', 'Fluxo'].map((n) => page.getByRole('group', { name: n, exact: true }).count()));
+ok(groupsNamed.every((c) => c === 1), 'cada grupo de respostas tem nome acessível (o título da pergunta)');
+
+// contraste real (renderizado) nos dois temas: botão escolhido, não escolhido, ícone e título
+const measureContrast = () => page.evaluate(() => {
+  const px = (c) => { const cv = document.createElement('canvas'); cv.width = cv.height = 1; const x = cv.getContext('2d', { willReadFrequently: true }); x.fillStyle = '#000'; x.clearRect(0, 0, 1, 1); x.fillStyle = c; x.fillRect(0, 0, 1, 1); return [...x.getImageData(0, 0, 1, 1).data.slice(0, 3)]; };
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = (c) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
+  const cr = (a, b) => { const [hi, lo] = [L(px(a)), L(px(b))].sort((m, n) => n - m); return (hi + 0.05) / (lo + 0.05); };
+  const min = { selText: 99, selIcon: 99, text: 99, icon: 99, title: 99 }, worst = {};
+  const note = (k, v, who) => { if (v < min[k]) { min[k] = v; worst[k] = who; } };
+  for (const panel of document.querySelectorAll('.wq')) {
+    const who = panel.dataset.q, pbg = getComputedStyle(panel).backgroundColor;
+    note('title', cr(getComputedStyle(panel.querySelector('h4')).color, pbg), who);
+    for (const o of panel.querySelectorAll('.wq-opt')) {
+      if (!o.offsetParent) continue;
+      const ob = getComputedStyle(o).backgroundColor, on = o.getAttribute('aria-pressed') === 'true';
+      note(on ? 'selText' : 'text', cr(getComputedStyle(o.querySelector('.wq-lab')).color, ob), who);
+      note(on ? 'selIcon' : 'icon', cr(getComputedStyle(o.querySelector('.wq-ico')).color, ob), who);
+    }
+  }
+  return { min, worst };
+});
+const origTheme = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
+for (const theme of ['light', 'dark']) {
+  await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
+  await wait(450); // deixa a transição de cor terminar
+  const { min } = await measureContrast();
+  ok(min.selText >= 4.5 && min.selIcon >= 4.5, `tema ${theme}: resposta escolhida legível (texto ${min.selText.toFixed(1)}:1, ícone ${min.selIcon.toFixed(1)}:1)`);
+  ok(min.text >= 4.5 && min.icon >= 3 && min.title >= 4.5, `tema ${theme}: rótulos ${min.text.toFixed(1)}:1, ícones ${min.icon.toFixed(1)}:1 e títulos ${min.title.toFixed(1)}:1 acima do mínimo (4,5 / 3 / 4,5)`);
+  const distinct = await page.evaluate(() => new Set([...document.querySelectorAll('.wq')].map((p) => getComputedStyle(p).backgroundColor)).size);
+  ok(distinct === 7, `tema ${theme}: as 7 perguntas continuam com cores diferentes`);
+}
+await page.evaluate((t) => { if (t == null) document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); }, origTheme);
 await page.getByRole('button', { name: 'Salvar', exact: true }).click();
 await wait(400);
 const wb = await sessEval(async () => [...(await import('/js/store.js')).state.wellbeing.values()][0]);
@@ -288,14 +376,14 @@ ok((await text('.next-card h2')) === 'Treino B', 'próximo treino avançou para 
 step('11. Treino em andamento sobrevive a fechar o app');
 await tap('Iniciar treino');
 await page.waitForSelector('.sess');
-await tap('Iniciar exercício'); await tap('Iniciar série'); await wait(500);
+await tap('Iniciar série'); await wait(500);
 await page.close();
 page = await ctx.newPage(); wire(page);
 await page.goto(BASE);
 await page.waitForSelector('.sess', { timeout: 6000 });
-ok(await hasText('Série 1 de 3') || await page.locator('.timer-big').count() > 0, 'sessão retomada automaticamente no ponto em que estava');
-const timerResumed = await text('.timer-big');
-ok(/^00:0\d$/.test(timerResumed) || /^00:[1-5]\d$/.test(timerResumed), `cronômetro continua contando por carimbo de tempo (${timerResumed})`);
+ok(await hasText('Série 1 de 3') && await page.getByRole('button', { name: /^(Descansar|Terminei)$/ }).count() === 1, 'sessão retomada automaticamente no ponto em que estava');
+const clockResumed = await text('.s-top .clock');
+ok(/^\d\d:\d\d$/.test(clockResumed) && clockResumed !== '00:00', `o tempo do treino continua contando por carimbo de tempo (${clockResumed})`);
 await page.getByRole('button', { name: 'Menu do treino' }).click();
 await page.getByRole('button', { name: /Descartar este treino/ }).click();
 await page.locator('.sheet').getByRole('button', { name: 'Descartar', exact: true }).click();
@@ -317,7 +405,7 @@ await page.goto(BASE + '#/exercicios'); await page.waitForSelector('.list');
 ok(await page.locator('.thumb svg').count() > 3, 'biblioteca com animações funciona offline');
 await page.goto(BASE + '#/'); await page.waitForSelector('.next-card');
 await tap('Iniciar treino'); await page.waitForSelector('.sess');
-await tap('Iniciar exercício'); await tap('Iniciar série'); await wait(400); await tap('Terminei');
+await tap('Iniciar série'); await wait(400); await page.getByRole('button', { name: /^(Descansar|Terminei)$/ }).click();
 await page.waitForSelector('.ring');
 ok(true, 'treino (série + descanso) funciona offline');
 await page.getByRole('button', { name: 'Menu do treino' }).click();

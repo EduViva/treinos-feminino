@@ -10,6 +10,7 @@ import * as sync from '../sync/engine.js';
 import * as db from '../db.js';
 import { legacySummary } from '../legacy.js';
 import { syncLabel } from './common.js';
+import { editScreen } from '../edit.js';
 
 export const APP_VERSION = '1.0.0';
 const OBJETIVOS = ['Hipertrofia (ganhar massa)', 'Emagrecimento', 'Condicionamento físico', 'Saúde e bem-estar', 'Força', 'Reabilitação / retorno', 'Outro'];
@@ -77,9 +78,14 @@ export function profileView() {
   root.appendChild(accountCard());
 
   const form = profileForm(st.profile || {});
-  root.appendChild(h('div', { class: 'card', style: { marginTop: '12px' } }, h('div', { class: 'card-title' }, 'Seus dados'), form.node,
-    btn('Salvar perfil', { onClick: async () => { const p = form.read(); if (!p.name) return toast('O nome não pode ficar vazio.'); await store.saveProfile(p); toast('Perfil salvo.'); } }),
-    h('p', { class: 'muted', style: { fontSize: '13px', marginTop: '10px' } }, 'Esses dados servem de contexto. As sugestões de carga priorizam o seu histórico real de desempenho.')));
+  const dataCard = h('div', { class: 'card', style: { marginTop: '12px' } }, h('div', { class: 'card-title' }, 'Seus dados'), form.node);
+  const ed = editScreen({
+    root: dataCard, read: () => JSON.stringify(form.read()), inline: true, saveLabel: 'Salvar perfil', // colada acima do menu enquanto o cartão está na tela
+    save: async () => { const p = form.read(); if (!p.name) { toast('O nome não pode ficar vazio.'); return false; } await store.saveProfile(p); toast('Perfil salvo.'); return true; },
+    discard: () => app.rerender({ keepScroll: true }),
+  });
+  dataCard.append(ed.bar, h('p', { class: 'muted', style: { fontSize: '13px', marginTop: '10px' } }, 'Esses dados servem de contexto. As sugestões de carga priorizam o seu histórico real de desempenho.'));
+  root.appendChild(dataCard);
 
   // preferências
   const sw = (key, label, hint) => {

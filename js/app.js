@@ -8,4 +8,6 @@ export const app = {
   importLegacy: async () => {},     // importar dados antigos deste aparelho para a conta
   installPrompt: null,
   sessionActive: false,
+  guard: null,                      // tela de edição atual com alterações a proteger (js/edit.js)
+  stagedWorkout: null,              // treino em edição que ainda não foi salvo (ida e volta a "criar exercício")
 };

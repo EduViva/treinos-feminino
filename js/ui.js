@@ -60,6 +60,8 @@ export function icon(name, size = 22) {
   return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[name] || ''}</svg>`;
 }
 export const ico = (name, size) => h('span', { class: 'ico', html: icon(name, size) });
+// Conjuntos de ícones extras (ex.: js/data/wellbeing.js) entram no mesmo `icon()`.
+export const registerIcons = (set) => { Object.assign(I, set); };
 
 // ---------- Botões ----------
 export function btn(label, opts = {}) {
@@ -73,14 +75,16 @@ export function iconBtn(name, label, onClick, cls = '') {
 }
 
 // ---------- Folha inferior (modal) ----------
+// `guard`: função que diz se há alterações não salvas; X, toque no fundo e Esc então perguntam antes de descartar.
 let sheetCount = 0;
-export function openSheet({ title, body, footer, onClose, className = '' } = {}) {
+const sheetStack = []; // folhas abertas (a última é a de cima)
+export function openSheet({ title, body, footer, onClose, className = '', guard } = {}) {
   const root = document.getElementById('sheet-root');
   const backdrop = h('div', { class: 'backdrop' });
   const content = h('div', { class: 'sheet-body' }, body);
   const sheet = h('div', { class: `sheet ${className} ${app.sessionActive ? 'dark' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': title || 'Janela' },
     h('div', { class: 'sheet-grab' }),
-    h('div', { class: 'sheet-head' }, h('h2', null, title || ''), iconBtn('x', 'Fechar', () => close())),
+    h('div', { class: 'sheet-head' }, h('h2', null, title || ''), iconBtn('x', 'Fechar', () => dismiss())),
     content,
     footer ? h('div', { class: 'sheet-foot' }, footer) : null);
   backdrop.appendChild(sheet);
@@ -89,20 +93,29 @@ export function openSheet({ title, body, footer, onClose, className = '' } = {})
   document.body.classList.add('noscroll');
   requestAnimationFrame(() => backdrop.classList.add('open'));
   let closed = false;
+  const handle = { close, el: sheet, body: content };
+  sheetStack.push(handle);
   function close(result) {
     if (closed) return;
     closed = true;
     backdrop.classList.remove('open');
     setTimeout(() => { backdrop.remove(); }, 200);
     sheetCount = Math.max(0, sheetCount - 1);
+    const at = sheetStack.indexOf(handle); if (at >= 0) sheetStack.splice(at, 1);
     if (!sheetCount) document.body.classList.remove('noscroll');
     document.removeEventListener('keydown', onKey);
     onClose && onClose(result);
   }
-  function onKey(e) { if (e.key === 'Escape') close(); }
+  // fechar "de fora" (X, fundo, Esc): com alterações não salvas, confirma antes de descartar
+  async function dismiss() {
+    if (closed) return;
+    if (guard && guard() && !(await discardDialog())) return;
+    close();
+  }
+  function onKey(e) { if (e.key === 'Escape' && sheetStack[sheetStack.length - 1] === handle) dismiss(); }
   document.addEventListener('keydown', onKey);
-  backdrop.addEventListener('pointerdown', (e) => { if (e.target === backdrop) close(); });
-  return { close, el: sheet, body: content };
+  backdrop.addEventListener('pointerdown', (e) => { if (e.target === backdrop) dismiss(); });
+  return handle;
 }
 
 export function confirmDialog({ title, message, confirmText = 'Confirmar', cancelText = 'Cancelar', danger = false, className = '' }) {
@@ -114,6 +127,27 @@ export function confirmDialog({ title, message, confirmText = 'Confirmar', cance
       body: h('p', { class: 'muted pre' }, message),
       footer: [btn(cancelText, { kind: 'secondary', onClick: () => done(false) }), btn(confirmText, { kind: danger ? 'danger' : 'primary', onClick: () => done(true) })],
       onClose: () => { if (!answered) resolve(false); },
+    });
+  });
+}
+
+// "Descartar alterações?" — true se a pessoa confirmou.
+export function discardDialog({ title = 'Descartar alterações?', message = 'O que foi mudado aqui ainda não foi salvo e será perdido.', confirmText = 'Descartar', cancelText = 'Continuar editando' } = {}) {
+  return confirmDialog({ title, message, confirmText, cancelText, danger: true });
+}
+// Ao sair de uma tela com alterações não salvas: 'save' | 'discard' | 'stay'.
+export function leaveDialog({ title = 'Alterações não salvas', message = 'Você mudou algo aqui e ainda não salvou. O que deseja fazer?' } = {}) {
+  return new Promise((resolve) => {
+    let answered = false;
+    const done = (v) => { answered = true; s.close(); resolve(v); };
+    const s = openSheet({
+      title, className: 'compact',
+      body: h('p', { class: 'muted pre' }, message),
+      footer: h('div', { class: 'leave-actions' },
+        btn('Salvar', { onClick: () => done('save') }),
+        btn('Descartar', { kind: 'danger', onClick: () => done('discard') }),
+        btn('Continuar editando', { kind: 'ghost', onClick: () => done('stay') })),
+      onClose: () => { if (!answered) resolve('stay'); },
     });
   });
 }
@@ -198,6 +232,24 @@ export function scale({ options, value, onChange, cls = '', allowClear = true })
   render();
   wrap.get = () => cur;
   wrap.set = (v) => { cur = v; render(); };
+  return wrap;
+}
+
+// Escala de respostas representadas por ÍCONE (+ rótulo curto). Cada botão alterna (toque de novo para limpar),
+// então o grupo usa aria-pressed. Atualiza os botões no lugar (não recria) para o foco não se perder.
+// A cor do painel vem do CSS (.wq[data-hue]); a escolha é marcada por preenchimento + peso, não só por cor.
+export function iconScale({ options, value, onChange, label, labelledBy, allowClear = true }) {
+  const wrap = h('div', { class: `wq-scale n${options.length}`, role: 'group', 'aria-label': label, 'aria-labelledby': labelledBy });
+  let cur = value ?? null;
+  const buttons = options.map((o) => h('button', {
+    type: 'button', class: 'wq-opt', 'aria-pressed': 'false', 'data-v': String(o.v),
+    onClick: () => { cur = (allowClear && cur === o.v) ? null : o.v; paint(); onChange && onChange(cur); },
+  }, h('span', { class: 'wq-ico', html: icon(o.icon, 28) }), h('span', { class: 'wq-lab' }, o.label)));
+  const paint = () => buttons.forEach((b, i) => { const on = cur === options[i].v; b.setAttribute('aria-pressed', String(on)); b.classList.toggle('on', on); });
+  wrap.append(...buttons);
+  paint();
+  wrap.get = () => cur;
+  wrap.set = (v) => { cur = v; paint(); };
   return wrap;
 }
 

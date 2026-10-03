@@ -131,10 +131,12 @@ function weightSection(eff) {
 function weightSheet() {
   const kg = numInput(store.state.weights.at(-1)?.kg ?? store.state.profile?.weight, { placeholder: 'kg' });
   const date = h('input', { type: 'date', value: dateKey() });
+  const form = () => JSON.stringify([readNum(kg), date.value]);
+  const initial = form();
   const s = openSheet({
-    title: 'Registrar peso', className: 'compact',
+    title: 'Registrar peso', className: 'compact', guard: () => form() !== initial,
     body: [field('Peso (kg)', kg), field('Data', date)],
-    footer: [btn('Cancelar', { kind: 'secondary', onClick: () => s.close() }), btn('Salvar', { onClick: async () => {
+    footer: [btn('Descartar', { kind: 'secondary', onClick: () => s.close() }), btn('Salvar', { onClick: async () => {
       const v = readNum(kg); if (!v || v < 20 || v > 400) return toast('Informe um peso válido.');
       await store.addWeight({ date: date.value, kg: v, source: 'manual' });
       if (date.value === dateKey()) await store.saveProfile({ weight: v });

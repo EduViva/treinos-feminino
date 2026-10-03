@@ -33,10 +33,10 @@ export async function startSession(workoutId) {
     await store.clearDraft();
   }
   unlockAudio();
-  const d = createDraft(w);
-  d.cursor.phase = PHASE.INTRO;
-  mount(new Session(d));
-  S._save();
+  const session = new Session(createDraft(w));
+  session.begin();                                    // o 1º exercício já começa (sem "Iniciar exercício")
+  if (settings().autoStartSet) session.startSet();    // igual ao "Iniciar exercício" quando a série automática está ligada
+  mount(session);
 }
 
 export async function resumeSession() {
@@ -137,6 +137,7 @@ function render() {
   const { root } = ui;
   ui.live = {}; ui.over = S.phase === PHASE.REST && S.d.cursor.rest && S.d.cursor.rest.endsAt ? S.restRemainingSec() <= 0 : false;
   const ph = S.phase;
+  if (ph !== PHASE.REST) { ui.pending = null; ui.expandResult = false; } // rascunho do resultado só existe no descanso
   const view = ph === PHASE.OVERVIEW ? vOverview() : ph === PHASE.INTRO ? vIntro() : ph === PHASE.READY ? vReady() : ph === PHASE.RUNNING ? vRunning() : ph === PHASE.REST ? vRest() : ph === PHASE.FINISH ? vFinish() : vSummary();
   ui.view = view;
   const frame = h('div', { class: 'sess', role: 'application', 'aria-label': 'Modo treino' },
@@ -160,7 +161,7 @@ function topBar() {
   const clockEl = h('div', { class: 'clock num', 'aria-label': 'Tempo total de treino' }, fmtClock(S.elapsedSec()));
   ui.live.clock = clockEl;
   return h('div', { class: 's-top' },
-    h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Lista de exercícios', html: icon('list', 24), onClick: () => { S.openOverview(); render(); } }),
+    h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Lista de exercícios', html: icon('list', 24), onClick: () => { applyPending(); S.openOverview(); render(); } }),
     h('div', { class: 'mid' }, clockEl, h('div', { class: 'where' }, where)),
     h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Menu do treino', html: icon('more', 24), onClick: menu }));
 }
@@ -170,9 +171,9 @@ function progressBar() {
 
 function menu() {
   menuSheet('Treino', [
-    { icon: 'list', label: 'Ver todos os exercícios', onClick: () => { S.openOverview(); render(); } },
+    { icon: 'list', label: 'Ver todos os exercícios', onClick: () => { applyPending(); S.openOverview(); render(); } },
     { icon: 'check', label: 'Finalizar treino agora', onClick: finishEarly },
-    { icon: 'left', label: 'Sair daqui (continuar depois)', onClick: () => { unmount(); app.rerender(); } },
+    { icon: 'left', label: 'Sair daqui (continuar depois)', onClick: () => { applyPending(); unmount(); app.rerender(); } },
     { icon: 'trash', label: 'Descartar este treino', danger: true, onClick: discard },
   ]);
 }
@@ -214,26 +215,36 @@ function infoPills(sx) {
     sx.target.sets !== sx.planned.sets ? h('span', { class: 'pill' }, `${sx.target.sets} séries hoje`) : null);
 }
 
+// Sugestão de progressão ainda sem decisão para este exercício (ou null).
+function pendingSuggestion(sx) {
+  const res = sx.suggestionHandled ? null : evaluateFor(sx.exerciseId);
+  return res && res.status === 'suggest' && !res.decided ? res : null;
+}
+function suggestionBlock(sx, res) {
+  return suggestionCard(res, {
+    workoutId: S.d.workoutId, compact: false,
+    onDecided: async (rec) => { if (rec.decision !== 'ignored') await S.adjustTarget({ load: rec.newLoad }, 'suggestion'); sx.suggestionHandled = true; S._save(); render(); },
+  });
+}
+const howTo = (ex) => (ex.instructions?.length ? details('Como fazer', h('ol', { class: 'steps' }, ex.instructions.map((s2) => h('li', null, s2)))) : null);
+
 // ------------------------------------------------------------------ INTRO
 function vIntro() {
   const sx = S.cur, ex = exFor(sx);
   const done = sx.status === 'done' || sx.status === 'skipped';
-  const sugRes = !done && (!sx.suggestionHandled) ? evaluateFor(sx.exerciseId) : null;
-  const showSug = sugRes && sugRes.status === 'suggest' && !sugRes.decided;
+  const sugRes = done ? null : pendingSuggestion(sx);
+  const showSug = !!sugRes;
   const body = [
     h('div', null, h('div', { class: 's-title' }, sx.name),
       h('div', { class: 's-sub' }, `${sx.target.sets} séries × ${repUnitText(ex, sx.target.reps)}${isTimed(sx.repUnit) ? '' : ' repetições'}`,
         showSug ? h('span', { class: 'badge', style: { marginLeft: '8px' } }, 'sugestão de progressão') : null)),
     visual(sx, { big: true, phaseText: true }),
     setCells(sx),
-    showSug ? suggestionCard(sugRes, {
-      workoutId: S.d.workoutId, compact: false,
-      onDecided: async (rec) => { if (rec.decision !== 'ignored') await S.adjustTarget({ load: rec.newLoad }, 'suggestion'); sx.suggestionHandled = true; S._save(); render(); },
-    }) : null,
+    showSug ? suggestionBlock(sx, sugRes) : null,
     infoPills(sx),
     sx.notes ? h('div', { class: 's-last' }, h('b', null, 'Observação: '), sx.notes) : null,
     lastTimeNode(sx.exerciseId, ex),
-    ex.instructions?.length ? details('Como fazer', h('ol', { class: 'steps' }, ex.instructions.map((s2) => h('li', null, s2)))) : null,
+    howTo(ex),
   ];
   const bottom = done
     ? [bigBtn(sx.status === 'skipped' ? 'Fazer este exercício' : 'Série extra', 'primary', () => { S.reopen(); if (settings().autoStartSet) S.startSet(); render(); }, 'plus'),
@@ -253,12 +264,18 @@ function vReady() {
   const n = S.nextSetIndex + 1;
   const prev = sx.sets[sx.sets.length - 1];
   const sugg = prev && Math.abs((prev.load || 0) - sx.target.load) > 0.01 ? prev : null;
+  // 1ª série de um exercício que começou direto (sem a tela de apresentação): mostra aqui sugestão, observação e instruções
+  const intro = !prev && sx.introSkipped;
+  const sugRes = intro ? pendingSuggestion(sx) : null;
   const body = [
     h('div', null, h('div', { class: 's-title' }, sx.name), h('div', { class: 's-sub' }, `Série ${n} de ${sx.target.sets}`)),
     visual(sx),
     setCells(sx),
+    sugRes ? suggestionBlock(sx, sugRes) : null,
     sugg ? h('button', { type: 'button', class: 'bigbtn sec', style: { minHeight: '46px', fontSize: '15px' }, onClick: async () => { await S.adjustTarget({ load: sugg.load }, 'today'); render(); } }, `Usar ${fmtNum(sugg.load, 1)} kg como na série anterior`) : null,
+    intro && sx.notes ? h('div', { class: 's-last' }, h('b', null, 'Observação: '), sx.notes) : null,
     prev ? h('div', { class: 's-last' }, h('b', null, `Série ${prev.n}: `), fmtSet(ex, prev)) : lastTimeNode(sx.exerciseId, ex),
+    intro ? howTo(ex) : null,
   ];
   const bottom = [
     bigBtn('Iniciar série', 'primary', () => { S.startSet(); render(); }, 'play'),
@@ -274,28 +291,33 @@ async function endEx() {
 }
 
 // ------------------------------------------------------------------ RUNNING
+// Por TEMPO (prancha, alongamento, cardio): contagem regressiva + "Terminei".
+// Por REPETIÇÃO: sem cronômetro (o tempo da série continua sendo registrado) e o botão é "Descansar",
+// que encerra a série e inicia o descanso. Na última série do treino não há descanso: continua "Terminei".
 function vRunning() {
   ui.setAlerted = false;
   const sx = S.cur, ex = exFor(sx);
   const n = S.nextSetIndex + 1;
-  const timer = h('div', { class: 'timer-big num', 'aria-live': 'off' }, '00:00');
-  ui.live.timer = timer;
+  const timed = isTimed(sx.repUnit);
+  const timer = timed ? h('div', { class: 'timer-big num', 'aria-live': 'off' }, '00:00') : null;
+  if (timer) ui.live.timer = timer;
   const body = [
     h('div', null, h('div', { class: 's-title' }, sx.name), h('div', { class: 's-sub' }, `Série ${n} de ${sx.target.sets} · em andamento`)),
-    visual(sx),
-    h('div', { class: 'timer-wrap' }, h('div', { class: 'timer-label', style: { color: 'var(--s-go)' } }, isTimed(sx.repUnit) ? 'TEMPO RESTANTE' : 'SÉRIE'), timer),
+    visual(sx, { big: !timed }),
+    timed ? h('div', { class: 'timer-wrap' }, h('div', { class: 'timer-label', style: { color: 'var(--s-go)' } }, 'TEMPO RESTANTE'), timer) : null,
     h('div', { class: 's-set' },
       h('div', { class: 'cell' }, h('b', null, sx.target.load ? fmtNum(sx.target.load, 1) : sx.bodyweight ? 'Corpo' : '—'), h('span', null, sx.target.load ? 'kg' : sx.bodyweight ? 'peso' : 'sem carga')),
-      h('div', { class: 'cell' }, h('b', null, repUnitText(ex, sx.target.reps)), h('span', null, isTimed(sx.repUnit) ? unitLong(sx.repUnit) : 'repetições')),
+      h('div', { class: 'cell' }, h('b', null, repUnitText(ex, sx.target.reps)), h('span', null, timed ? unitLong(sx.repUnit) : 'repetições')),
       h('div', { class: 'cell' }, h('b', null, `${n}/${sx.target.sets}`), h('span', null, 'série'))),
   ];
+  const rests = !timed && !S.finishesWorkout;
   const bottom = [
-    bigBtn('Terminei', 'go', () => {
+    bigBtn(rests ? 'Descansar' : 'Terminei', 'go', () => {
       // exercício cronometrado: registra o tempo REAL feito (não o planejado)
       const el = (Date.now() - (S.d.cursor.setStartedAt || Date.now())) / 1000;
-      S.finishSet(isTimed(sx.repUnit) ? { reps: Math.max(1, Math.round(el / unitFactor(sx.repUnit))) } : undefined);
+      S.finishSet(timed ? { reps: Math.max(1, Math.round(el / unitFactor(sx.repUnit))) } : undefined);
       ui.expandResult = false; render();
-    }, 'check'),
+    }, rests ? 'timer' : 'check'),
     bigBtn('Cancelar início', 'sec', () => { S.d.cursor.phase = PHASE.READY; S.d.cursor.setStartedAt = null; S._save(); render(); }),
   ];
   return { body, bottom };
@@ -345,30 +367,48 @@ function vRest() {
     if (r.next === 'finish') return [bigBtn('Finalizar treino', 'go', () => doFinish(), 'check')];
     const lab = r.next === 'exercise' ? 'Próximo exercício' : 'Próxima série';
     return rem > 0
-      ? [bigBtn('Pular descanso', 'rest', () => { S.proceedFromRest({ autoStart }); render(); }, 'skip')]
-      : [bigBtn(lab, 'go', () => { S.proceedFromRest({ autoStart }); render(); }, 'play')];
+      ? [bigBtn('Pular descanso', 'rest', () => { applyPending(); S.proceedFromRest({ autoStart }); render(); }, 'skip')]
+      : [bigBtn(lab, 'go', () => { applyPending(); S.proceedFromRest({ autoStart }); render(); }, 'play')];
   };
   return { body, bottom: bottomFn(), bottomFn };
 }
 
+// Resultado da série (reps, carga, esforço, RIR). A edição fica num rascunho (ui.pending) até "Salvar";
+// "Descartar" abandona. Ao seguir em frente (próxima série, finalizar…) o rascunho aberto é aplicado, para não perder o que foi digitado.
+const fresh = (set) => ({ reps: set.reps, load: set.load, effort: set.effort ?? null, rir: set.rir ?? null });
+function applyPending() {
+  if (!ui || !ui.pending) return;
+  const p = ui.pending; ui.pending = null; ui.expandResult = false;
+  const r = S.d.cursor.rest;
+  const sx = r ? S.d.exercises[r.ei] : null, set = sx && sx.sets[r.setIdx];
+  if (!set) return;
+  const patch = {};
+  for (const k of ['reps', 'load', 'effort', 'rir']) if ((p[k] ?? null) !== (set[k] ?? null)) patch[k] = p[k];
+  if (Object.keys(patch).length) S.editLastSet(patch);
+}
 function resultCard(sx, ex, set, expanded) {
   const open = expanded || ui.expandResult;
+  if (open && !ui.pending) ui.pending = fresh(set);
   const card = h('div', { class: 's-edit' });
   const summary = () => fmtSet(ex, set);
   const head = h('div', { class: 'row sb' }, h('div', null, h('h4', { style: { margin: 0 } }, `Série ${set.n} · o que você fez`), h('b', { style: { fontSize: '20px' } }, summary())),
-    expanded ? null : h('button', { type: 'button', class: 'btn sm secondary', onClick: () => { ui.expandResult = !ui.expandResult; render(); } }, open ? 'Fechar' : 'Ajustar'));
+    open ? null : h('button', { type: 'button', class: 'btn sm secondary', onClick: () => { ui.expandResult = true; ui.pending = fresh(set); render(); } }, 'Ajustar'));
   card.appendChild(head);
   if (open) {
-    const sReps = stepper({ value: set.reps, min: 0, max: 300, decimals: 0, big: true, label: 'Repetições', onChange: (v) => { S.editLastSet({ reps: v }); } });
-    const sLoad = stepper({ value: set.load, min: 0, max: 999, step: ex.defaults?.loadStep && ex.defaults.loadStep <= 2.5 ? ex.defaults.loadStep : 1, unit: 'kg', big: true, label: 'Carga', onChange: (v) => { S.editLastSet({ load: v }); } });
+    const P = ui.pending;
+    const sReps = stepper({ value: P.reps, min: 0, max: 300, decimals: 0, big: true, label: 'Repetições', onChange: (v) => { P.reps = v; } });
+    const sLoad = stepper({ value: P.load, min: 0, max: 999, step: ex.defaults?.loadStep && ex.defaults.loadStep <= 2.5 ? ex.defaults.loadStep : 1, unit: 'kg', big: true, label: 'Carga', onChange: (v) => { P.load = v; } });
     card.appendChild(h('div', { style: { display: 'grid', gap: '10px', marginTop: '12px' } },
       h('div', null, h('div', { class: 's-sub', style: { margin: '0 0 6px' } }, isTimed(sx.repUnit) ? (unitLong(sx.repUnit)[0].toUpperCase() + unitLong(sx.repUnit).slice(1) + ' realizados') : 'Repetições realizadas'), sReps),
       h('div', null, h('div', { class: 's-sub', style: { margin: '0 0 6px' } }, 'Carga usada'), sLoad)));
     card.appendChild(h('div', { style: { marginTop: '14px' } },
       h('div', { class: 's-sub', style: { margin: '0 0 6px' } }, 'Como foi? (opcional)'),
-      scale({ options: EFFORT, value: set.effort, cls: 'effort', onChange: (v) => S.editLastSet({ effort: v }) }),
+      scale({ options: EFFORT, value: P.effort, cls: 'effort', onChange: (v) => { P.effort = v; } }),
       h('div', { class: 's-sub', style: { margin: '12px 0 6px' } }, 'Quantas repetições você acha que conseguiria fazer além das realizadas? (opcional)'),
-      scale({ options: RIR, value: set.rir, cls: 'nums', onChange: (v) => S.editLastSet({ rir: v }) })));
+      scale({ options: RIR, value: P.rir, cls: 'nums', onChange: (v) => { P.rir = v; } })));
+    card.appendChild(h('div', { class: 'row', style: { marginTop: '14px' } },
+      h('button', { type: 'button', class: 'btn secondary grow', onClick: () => { ui.pending = null; ui.expandResult = false; render(); } }, 'Descartar'),
+      h('button', { type: 'button', class: 'btn primary grow', onClick: () => { applyPending(); render(); } }, 'Salvar')));
   }
   return card;
 }
@@ -378,7 +418,7 @@ function editRest() {
   const st = stepper({ value: r.plannedSec, min: 5, max: 900, step: 15, decimals: 0, unit: 's', big: true, label: 'Descanso' });
   const s = openSheet({
     title: 'Editar descanso', className: 'compact dark', body: [h('p', { class: 'muted', style: { marginBottom: '12px' } }, 'Tempo total deste descanso (o tempo realmente descansado também é registrado).'), st],
-    footer: [btn2('Cancelar', 'secondary', () => s.close()), btn2('Aplicar', 'primary', () => { S.setRest(st.get()); s.close(); render(); })],
+    footer: [btn2('Descartar', 'secondary', () => s.close()), btn2('Aplicar', 'primary', () => { S.setRest(st.get()); s.close(); render(); })],
   });
 }
 const btn2 = (label, kind, onClick) => h('button', { type: 'button', class: `btn ${kind} lg`, onClick }, label);
@@ -391,6 +431,8 @@ function adjustSheet() {
   const sReps = stepper({ value: t.reps, min: 1, max: 300, decimals: 0, label: 'Repetições' });
   const sSets = stepper({ value: t.sets, min: Math.max(1, sx.sets.length || 1), max: 20, decimals: 0, label: 'Séries' });
   const sRest = stepper({ value: t.rest, min: 0, max: 900, step: 15, decimals: 0, unit: 's', label: 'Descanso' });
+  const form = () => JSON.stringify([sLoad.get(), sReps.get(), sSets.get(), sRest.get()]);
+  const initial = form();
   const apply = async (scope) => {
     const patch = { load: sLoad.get(), reps: sReps.get(), sets: sSets.get(), rest: sRest.get() };
     const changed = Object.keys(patch).some((k) => patch[k] !== t[k]);
@@ -401,7 +443,7 @@ function adjustSheet() {
     render();
   };
   const s = openSheet({
-    title: `Ajustar — ${sx.name}`, className: 'tall dark',
+    title: `Ajustar — ${sx.name}`, className: 'tall dark', guard: () => form() !== initial,
     body: [
       h('div', { class: 'two', style: { marginBottom: '6px' } }, h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Carga'), sLoad), h('div', { class: 'field' }, h('span', { class: 'field-label' }, isTimed(sx.repUnit) ? (unitLong(sx.repUnit)[0].toUpperCase() + unitLong(sx.repUnit).slice(1)) : 'Repetições'), sReps)),
       h('div', { class: 'two' }, h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Séries'), sSets), h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Descanso'), sRest)),
@@ -410,6 +452,7 @@ function adjustSheet() {
     footer: h('div', { style: { display: 'grid', gap: '10px', width: '100%' } },
       h('button', { type: 'button', class: 'btn primary lg', onClick: () => apply('today') }, 'Usar somente hoje'),
       h('button', { type: 'button', class: 'btn secondary lg', onClick: () => apply('default') }, 'Tornar novo padrão'),
+      h('button', { type: 'button', class: 'btn ghost lg', onClick: () => s.close() }, 'Descartar'),
       h('p', { class: 'muted', style: { fontSize: '12.5px', textAlign: 'center' } }, '“Somente hoje” não altera o treino planejado. “Novo padrão” também atualiza o plano para os próximos treinos.')),
   });
 }
@@ -446,6 +489,7 @@ const sumCell = (v, l) => h('div', { class: 'cell' }, h('b', null, v), h('span',
 
 // ------------------------------------------------------------------ SUMMARY
 async function doFinish() {
+  applyPending();
   const rec = S.finishWorkout();
   await store.addSession(rec);
   await recordOutcomes(rec);
@@ -459,8 +503,9 @@ function vSummary() {
   const t = rec.totals || sessionTotals(rec);
   ui.fd = ui.fd || { feel: rec.feel ?? null, note: rec.note || '' };
   const note = textArea(ui.fd.note, { placeholder: 'Observação livre (opcional)', rows: 3 });
-  note.addEventListener('input', () => { ui.fd.note = note.value; });
-  const feelScale = scale({ options: FEEL, value: ui.fd.feel, onChange: (v) => { ui.fd.feel = v; } });
+  const changed = () => (ui.fd.feel ?? null) !== (rec.feel ?? null) || (ui.fd.note || '').trim() !== (rec.note || '').trim();
+  note.addEventListener('input', () => { ui.fd.note = note.value; renderBottom(); });
+  const feelScale = scale({ options: FEEL, value: ui.fd.feel, onChange: (v) => { ui.fd.feel = v; renderBottom(); } });
   const done = rec.exercises.filter((e) => e.sets?.length);
   const doneExIds = done.map((e) => e.exerciseId);
   const sugs = pendingSuggestions(store.state, doneExIds);
@@ -474,17 +519,19 @@ function vSummary() {
     h('div', { class: 's-edit' }, h('h4', null, 'Como você se sentiu?'), feelScale, h('div', { style: { marginTop: '12px' } }, note)),
     sugs.length ? h('div', null, h('div', { class: 's-sub', style: { margin: '4px 0 8px' } }, 'Insights de progressão'), sugs.slice(0, 3).map((r) => h('div', { style: { marginBottom: '10px' } }, h('div', { class: 's-sub', style: { margin: '0 0 6px', color: '#fff' } }, store.getExercise(r.exerciseId)?.name || ''), suggestionCard(r, { workoutId: rec.workoutId, onDecided: () => render() })))) : null,
   ];
-  const bottom = [
+  // o treino já está no histórico; aqui só se grava (ou descarta) a sensação e a observação
+  const bottomFn = () => [
     bigBtn('Salvar e fechar', 'primary', async () => {
       const f = feelScale.get();
       await store.updateSession({ ...rec, feel: f ?? null, note: note.value.trim() });
       unmount(); toast('Treino salvo no histórico.'); app.navigate('/');
     }, 'check'),
+    changed() ? bigBtn('Descartar alterações', 'sec', () => { unmount(); toast('Alterações descartadas. O treino continua salvo.'); app.navigate('/'); }) : null,
     bigBtn('Ver evolução', 'sec', async () => {
       const f = feelScale.get();
       await store.updateSession({ ...rec, feel: f ?? null, note: note.value.trim() });
       unmount(); app.navigate('/evolucao');
     }),
-  ];
-  return { body, bottom };
+  ].filter(Boolean);
+  return { body, bottom: bottomFn(), bottomFn };
 }

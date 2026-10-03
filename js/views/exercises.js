@@ -15,6 +15,7 @@ import { exerciseEntries } from '../stats.js';
 import { timeChart } from '../charts.js';
 import { libraryTabs, loadText, setsRepsText, restText, planFromItem, setLineText, setExtras } from './common.js';
 import { suggestionCard, evaluateFor } from './suggestion.js';
+import { editScreen } from '../edit.js';
 
 // ================= Biblioteca =================
 export function libraryView() {
@@ -302,13 +303,11 @@ export function exerciseEditView([id], query) {
       padroes,
       h('div', { class: 'card' }, field('Instruções rápidas', instr), field('Dicas de execução', tips), field('Observações', notes)));
   }
-  root.appendChild(h('div', { class: 'row', style: { marginTop: '16px' } },
-    btn('Cancelar', { kind: 'ghost', onClick: () => history.back() }),
-    btn('Salvar', { onClick: save, cls: 'grow' })));
-
   const lines = (ta) => ta.value.split('\n').map((x) => x.trim()).filter(Boolean);
+  let savedEx = null;
+  // grava (sem navegar): quem navega é o `saved` do editScreen, depois que a tela já considera tudo salvo
   async function save() {
-    if (!locked && !name.value.trim()) { toast('Dê um nome ao exercício.'); name.focus(); return; }
+    if (!locked && !name.value.trim()) { toast('Dê um nome ao exercício.'); name.focus(); return false; }
     const defaults = { sets: sSets.get(), reps: sReps.get(), load: sLoad.get(), rest: sRest.get(), loadStep: sStep.get() };
     const rec = locked
       ? { ...base, defaults, notes: notes.value.trim() }
@@ -317,13 +316,23 @@ export function exerciseEditView([id], query) {
         level: levelSel.value || null, art: artSel.value || null, instructions: lines(instr), tips: lines(tips), defaults,
         repUnit: unit.value, bodyweight: bw.checked, notes: notes.value.trim(),
       };
-    const saved = await store.saveExercise(rec);
+    savedEx = await store.saveExercise(rec);
+    return true;
+  }
+  async function afterSave() {
     toast('Exercício salvo.');
     if (query && query.w) {
-      const w = store.getWorkout(query.w);
-      if (w && isNew) { await store.saveWorkout({ ...w, items: [...w.items, store.newWorkoutItem(saved.id)] }); toast('Exercício criado e adicionado ao treino.'); }
+      if (isNew) {
+        const staged = app.stagedWorkout; // treino ainda não salvo, em edição: o exercício entra nele (só vale depois de "Salvar" o treino)
+        if (staged && (staged.routeId === query.w || staged.w.id === query.w)) { staged.w.items.push(store.newWorkoutItem(savedEx.id)); toast('Exercício criado e adicionado ao treino.'); }
+        else { const w = store.getWorkout(query.w); if (w) { await store.saveWorkout({ ...w, items: [...w.items, store.newWorkoutItem(savedEx.id)] }); toast('Exercício criado e adicionado ao treino.'); } }
+      }
       app.navigate(`/treino/${query.w}`);
-    } else app.navigate(`/exercicio/${saved.id}`);
+    } else app.navigate(`/exercicio/${savedEx.id}`);
   }
+  const read = () => JSON.stringify([name.value.trim(), aliases.value, group.value, [...secondary.get()].sort(), equip.value, kindSel.value, levelSel.value, artSel.value, instr.value, tips.value,
+    sSets.get(), sReps.get(), sLoad.get(), sRest.get(), sStep.get(), bw.checked, unit.value, notes.value]);
+  const ed = editScreen({ root, read, save, saved: afterSave, discard: () => (history.length > 1 ? history.back() : app.navigate('/exercicios')) });
+  root.appendChild(ed.bar);
   return root;
 }
